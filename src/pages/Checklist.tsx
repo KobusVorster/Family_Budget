@@ -102,7 +102,7 @@ export default function Checklist() {
         <StatTile
           label="Still to pay"
           value={formatMoney(progress.outstanding, currency)}
-          tone={progress.outstanding > 0 ? 'warning' : 'good'}
+          tone={progress.outstanding > 0 ? undefined : 'good'}
         />
         <StatTile
           label="Already paid"

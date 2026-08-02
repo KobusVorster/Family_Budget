@@ -56,7 +56,11 @@ export default function Dashboard() {
   );
 
   const thisMonth = monthKey(new Date());
-  const netTone = household.net < 0 ? 'critical' : household.net < household.income * 0.05 ? 'warning' : 'good';
+  /* Only two tones may colour a figure. A thin-but-positive margin used to show
+     amber here, but amber on the light surface measures 1.79:1 — unreadable at
+     any size — so that case stays in plain ink and the caption says it. */
+  const netTone = household.net < 0 ? 'critical' : 'good';
+  const thinMargin = household.net >= 0 && household.net < household.income * 0.05;
 
   const activeDebts = debts.filter((debt) => debt.remaining > 0);
   const nearestPayoff = activeDebts
@@ -93,7 +97,9 @@ export default function Dashboard() {
                 {formatMoney(household.expenses, currency)} committed.{' '}
                 {household.net < 0
                   ? 'The household spends more than it earns.'
-                  : 'The household is covering itself.'}
+                  : thinMargin
+                    ? 'That is under 5% of what comes in — a thin margin for anything unexpected.'
+                    : 'The household is covering itself.'}
               </>
             }
           />

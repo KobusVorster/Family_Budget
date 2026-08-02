@@ -74,7 +74,9 @@ export default function App() {
       window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   return (
-    <div className="min-h-full lg:flex">
+    /* The shell sets its own ground and ink rather than inheriting them, so the
+       app looks the same embedded in a host page as it does standing alone. */
+    <div className="min-h-full bg-plane text-ink lg:flex">
       {/* Desktop rail */}
       <nav
         aria-label="Main"

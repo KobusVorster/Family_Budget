@@ -462,7 +462,7 @@ function ExpenseEditor({
               ))}
             </div>
             {Math.abs(splitTotal - 1) > 0.001 && (
-              <p className="mt-3 text-sm" style={{ color: 'var(--color-critical)' }}>
+              <p className="mt-3 text-sm" style={{ color: 'var(--color-critical-text)' }}>
                 The shares add up to {Math.round(splitTotal * 100)}%. They need to make 100%.
               </p>
             )}

@@ -25,10 +25,22 @@
   --color-sunken: #f2f1ee;
   --color-ink: #0b0b0b;
   --color-ink-2: #52514e;
-  --color-muted: #898781;
+  /* Muted is a themed token, not one shared hex. No single grey clears 4.5:1
+     against both the light and the dark surface, and this carries real label
+     text (not just axis ticks), so each mode gets its own step. */
+  --color-muted: #75736e;
   --color-grid: #e1e0d9;
   --color-axis: #c3c2b7;
   --color-hairline: rgb(11 11 11 / 0.1);
+
+  /* Filled-button ground. A step darker than series-1 so white label text
+     clears 4.5:1 on it — series-1 itself only reaches 4.42. */
+  --color-accent-strong: #256abf;
+
+  /* Text-safe counterparts to the status hues. The status palette is tuned for
+     marks at 3:1, which is not enough for a 14px label, so status-coloured
+     *text* uses these instead. */
+  --color-critical-text: #c23434;
 
   --color-series-1: #2a78d6;
   --color-series-2: #eb6834;
@@ -75,6 +87,9 @@
       --color-axis: #383835;
       --color-hairline: rgb(255 255 255 / 0.1);
 
+      --color-accent-strong: #256abf;
+      --color-critical-text: #e66767;
+
       --color-series-1: #3987e5;
       --color-series-2: #d95926;
       --color-series-3: #199e70;
@@ -106,6 +121,9 @@
     --color-axis: #383835;
     --color-hairline: rgb(255 255 255 / 0.1);
 
+    --color-accent-strong: #256abf;
+    --color-critical-text: #e66767;
+
     --color-series-1: #3987e5;
     --color-series-2: #d95926;
     --color-series-3: #199e70;
@@ -130,14 +148,6 @@
     height: 100%;
   }
 
-  body {
-    background: var(--color-plane);
-    color: var(--color-ink);
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
-    overscroll-behavior-y: none;
-  }
-
   /* Every focusable thing gets the same visible ring — keyboard users see the
      same affordances mouse users do. */
   :focus-visible {
@@ -154,6 +164,24 @@
       transition-duration: 0.001ms !important;
     }
   }
+}
+
+/* Deliberately OUTSIDE @layer base.
+ *
+ * Unlayered CSS wins over layered CSS no matter the order or specificity, so
+ * anything in @layer base loses to a host page's own unlayered reset. When the
+ * app is embedded — a hosted preview, an iframe, any page that ships its own
+ * reset — a host `body { color: … }` would beat a layered one here and every
+ * element that inherits its colour rather than setting one would silently pick
+ * up the wrong ink while the explicit `text-ink` utilities stayed correct.
+ * `html body` also outranks a bare `body`, so this holds against an unlayered
+ * host rule too. */
+html body {
+  background: var(--color-plane);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
 }
 
 @utility card {

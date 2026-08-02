@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
-import { STATUS, type StatusTone } from '../lib/palette';
+import { STATUS, STATUS_TEXT, type StatusTone, type TextTone } from '../lib/palette';
 
 /* -- surfaces ------------------------------------------------------------- */
 
@@ -85,7 +85,7 @@ export function HeroFigure({
 }: {
   label: string;
   value: string;
-  tone?: StatusTone;
+  tone?: TextTone;
   caption?: ReactNode;
 }) {
   return (
@@ -93,7 +93,7 @@ export function HeroFigure({
       <p className="text-sm font-medium text-ink-2">{label}</p>
       <p
         className="mt-1 text-[clamp(2.75rem,7vw,4rem)] leading-[1.05] font-semibold tracking-tight"
-        style={tone ? { color: STATUS[tone] } : undefined}
+        style={tone ? { color: STATUS_TEXT[tone] } : undefined}
       >
         {value}
       </p>
@@ -113,7 +113,7 @@ export function StatTile({
   label: string;
   value: string;
   detail?: ReactNode;
-  tone?: StatusTone;
+  tone?: TextTone;
   /** A colour key beside the label — identity comes from the mark, never from
    *  colouring the text itself. */
   accent?: string;
@@ -133,7 +133,7 @@ export function StatTile({
       </div>
       <p
         className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]"
-        style={tone ? { color: STATUS[tone] } : undefined}
+        style={tone ? { color: STATUS_TEXT[tone] } : undefined}
       >
         {value}
       </p>
@@ -212,10 +212,10 @@ export function EstimateMark() {
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
-  primary: 'bg-series-1 text-white border border-transparent hover:brightness-110',
+  primary: 'bg-accent-strong text-white border border-transparent hover:brightness-110',
   secondary: 'bg-surface text-ink border border-hairline hover:bg-sunken',
   ghost: 'bg-transparent text-ink-2 border border-transparent hover:bg-sunken',
-  danger: 'bg-transparent text-critical border border-critical hover:bg-sunken',
+  danger: 'bg-transparent text-critical-text border border-critical hover:bg-sunken',
 };
 
 export function Button({
