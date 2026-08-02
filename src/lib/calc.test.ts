@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   amountIn,
   categoryBreakdown,
+  gigAverage,
   checklistProgress,
   monthlyBurden,
   monthlyIncome,
@@ -83,6 +84,96 @@ describe('the figures that are known to be real', () => {
     expect(daddy.amount).toBe(1500);
     expect(daddy.frequency).toBe('weekly');
     expect(monthlyValue(daddy, inRand)).toBeCloseTo(6500, 2);
+  });
+});
+
+describe("Will's daily gig earnings", () => {
+  const data = seed();
+  const gig = gigAverage(data, 'will', inDollars)!;
+
+  it('covers every calendar day from 1 June to 1 August with no gaps', () => {
+    expect(gig.from).toBe('2026-06-01');
+    expect(gig.to).toBe('2026-08-01');
+    expect(gig.days).toBe(62);
+  });
+
+  it('logs the right number of days per app', () => {
+    const doordash = gig.bySource.find((source) => source.label === 'DoorDash')!;
+    const lyft = gig.bySource.find((source) => source.label === 'Lyft')!;
+    // 5 days with no DoorDash, 7 with no Lyft.
+    expect(doordash.days).toBe(57);
+    expect(lyft.days).toBe(55);
+    expect(data.ledger).toHaveLength(57 + 55);
+  });
+
+  it('adds the logged amounts up exactly', () => {
+    const doordash = gig.bySource.find((source) => source.label === 'DoorDash')!;
+    const lyft = gig.bySource.find((source) => source.label === 'Lyft')!;
+    expect(doordash.total).toBeCloseTo(4365.29, 2);
+    expect(lyft.total).toBeCloseTo(3862.98, 2);
+    expect(gig.total).toBeCloseTo(8228.27, 2);
+  });
+
+  it('averages over every day, not just the days that earned', () => {
+    // $8,228.27 over 62 days. Dividing by the 62 logged days gives $132.71 a
+    // day; dividing by only the days that earned something would overstate it.
+    expect(gig.perDay).toBeCloseTo(132.71, 2);
+    expect(gig.perMonth).toBeCloseTo(4039.48, 1);
+  });
+
+  it('feeds the monthly income total instead of a typed-in amount', () => {
+    // No fixed DoorDash or Lyft line exists any more.
+    const labels = data.income.map((source) => source.label);
+    expect(labels).not.toContain('DoorDash');
+    expect(labels).not.toContain('Lyft');
+
+    const fixed = data.income
+      .filter((source) => source.personId === 'will' && source.active)
+      .reduce((total, source) => total + monthlyValue(source, inDollars), 0);
+    expect(monthlyIncome(data, 'will', inDollars)).toBeCloseTo(fixed + gig.perMonth, 2);
+  });
+
+  it('leaves Liz alone — she has no daily log', () => {
+    expect(gigAverage(data, 'liz', inDollars)).toBeNull();
+    expect(monthlyIncome(data, 'liz', inRand)).toBeCloseTo(31954, 2);
+  });
+
+  it('picks up a newly logged day', () => {
+    const more = seed();
+    more.ledger.push({
+      id: 'extra',
+      date: '2026-08-02',
+      personId: 'will',
+      label: 'Lyft',
+      amount: 100,
+      currency: 'USD',
+      type: 'income',
+    });
+    const after = gigAverage(more, 'will', inDollars)!;
+    expect(after.days).toBe(63);
+    expect(after.to).toBe('2026-08-02');
+    expect(after.total).toBeCloseTo(8328.27, 2);
+  });
+
+  it('moves the average the way the new day actually goes', () => {
+    // A day below the running average pulls it down, and a day above pushes it
+    // up. Logging a slow day must not be able to raise the budget.
+    const addDay = (amount: number) => {
+      const next = seed();
+      next.ledger.push({
+        id: 'extra',
+        date: '2026-08-02',
+        personId: 'will',
+        label: 'Lyft',
+        amount,
+        currency: 'USD',
+        type: 'income',
+      });
+      return gigAverage(next, 'will', inDollars)!.perDay;
+    };
+
+    expect(addDay(100)).toBeLessThan(gig.perDay); // below the $132.71 average
+    expect(addDay(200)).toBeGreaterThan(gig.perDay); // above it
   });
 });
 

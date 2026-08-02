@@ -42,15 +42,89 @@ export function activeIncome(data: BudgetData, personId?: PersonId): IncomeSourc
   );
 }
 
+/** Average days in a month (365.25 / 12). */
+export const DAYS_PER_MONTH = 365.25 / 12;
+
+export interface GigAverage {
+  /** First and last day in the log. */
+  from: string;
+  to: string;
+  /** Calendar days the log covers, including days that earned nothing. */
+  days: number;
+  total: number;
+  perDay: number;
+  perMonth: number;
+  bySource: Array<{ label: string; total: number; perMonth: number; days: number }>;
+}
+
+/** Turn a daily earnings log into a monthly figure.
+ *
+ *  Gig work pays a different amount every day, so there is no number to type
+ *  in. The average is taken over every calendar day the log covers — including
+ *  the days that earned nothing, because a day off is part of the average.
+ *  Counting only the days that made money would overstate the month. */
+export function gigAverage(
+  data: BudgetData,
+  personId: PersonId | undefined,
+  conversion: Conversion,
+): GigAverage | null {
+  const entries = data.ledger.filter(
+    (entry) =>
+      entry.type === 'income' && (personId === undefined || entry.personId === personId),
+  );
+  if (entries.length === 0) return null;
+
+  const dates = entries.map((entry) => entry.date).sort();
+  const from = dates[0];
+  const to = dates[dates.length - 1];
+  const days =
+    Math.round(
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000,
+    ) + 1;
+  const span = Math.max(1, days);
+
+  const totals = new Map<string, { total: number; days: Set<string> }>();
+  let total = 0;
+
+  for (const entry of entries) {
+    const value = amountIn(entry.amount, entry.currency, conversion);
+    total += value;
+    const bucket = totals.get(entry.label) ?? { total: 0, days: new Set<string>() };
+    bucket.total += value;
+    bucket.days.add(entry.date);
+    totals.set(entry.label, bucket);
+  }
+
+  return {
+    from,
+    to,
+    days: span,
+    total,
+    perDay: total / span,
+    perMonth: (total / span) * DAYS_PER_MONTH,
+    bySource: [...totals.entries()]
+      .map(([label, bucket]) => ({
+        label,
+        total: bucket.total,
+        perMonth: (bucket.total / span) * DAYS_PER_MONTH,
+        days: bucket.days.size,
+      }))
+      .sort((a, b) => b.total - a.total),
+  };
+}
+
+/** Everything a person earns in a month: their fixed lines, plus the average
+ *  of whatever their daily log shows. */
 export function monthlyIncome(
   data: BudgetData,
   personId: PersonId | undefined,
   conversion: Conversion,
 ): number {
-  return activeIncome(data, personId).reduce(
+  const fixed = activeIncome(data, personId).reduce(
     (total, source) => total + monthlyValue(source, conversion),
     0,
   );
+  return fixed + (gigAverage(data, personId, conversion)?.perMonth ?? 0);
 }
 
 /* -- expenses ------------------------------------------------------------- */

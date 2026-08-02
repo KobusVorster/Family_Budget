@@ -3,6 +3,7 @@ import { newId, useBudget } from '../store/BudgetContext';
 import type { CurrencyCode, Frequency, IncomeKind, IncomeSource, PersonId } from '../types';
 import {
   amountIn,
+  gigAverage,
   ledgerSources,
   monthlyIncome,
   monthlyValue,
@@ -88,16 +89,45 @@ export default function Income() {
       <div className="grid gap-4 lg:grid-cols-2">
         {data.people.map((person) => {
           const rows = data.income.filter((source) => source.personId === person.id);
+          const gig = gigAverage(data, person.id, conversion);
           return (
             <Card key={person.id}>
               <CardHeader
                 title={`${person.name}’s money in`}
                 subtitle={person.currency === 'USD' ? 'Paid in dollars' : 'Paid in rand'}
               />
-              {rows.length === 0 ? (
+
+              {/* Gig work has no set amount, so it is worked out from the daily
+                  list rather than typed in. Showing it here keeps the card a
+                  complete picture of what the person earns. */}
+              {gig && (
+                <ul className="mb-3 flex flex-col">
+                  {gig.bySource.map((source) => (
+                    <li
+                      key={source.label}
+                      className="flex items-center gap-3 border-b border-hairline py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-ink">{source.label}</p>
+                        <p className="text-xs text-muted">
+                          Changes daily · earned on {source.days} of {gig.days} days
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="tnum text-sm font-medium text-ink">
+                          {formatMoney(source.perMonth, currency)}
+                        </p>
+                        <p className="text-xs text-muted">average</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {rows.length === 0 && !gig ? (
                 <EmptyState
                   title="Nothing here yet"
-                  body={`Press "Add money in" to put in ${person.name}’s salary or gig pay.`}
+                  body={`Press "Add money in" to put in ${person.name}’s salary.`}
                 />
               ) : (
                 <ul className="flex flex-col">
@@ -140,6 +170,8 @@ export default function Income() {
           );
         })}
       </div>
+
+      <GigSummary />
 
       <div className="mt-4">
         <ChartFrame
@@ -200,6 +232,74 @@ export default function Income() {
   );
 }
 
+/* -- gig summary ---------------------------------------------------------- */
+
+/** DoorDash and Lyft pay a different amount every day, so there is no monthly
+ *  amount to type in. This card shows what the daily list works out to and how
+ *  it got there, so the number on the Overview page is never a mystery. */
+function GigSummary() {
+  const { data, conversion } = useBudget();
+  const currency = conversion.target;
+  const gig = gigAverage(data, undefined, conversion);
+  if (!gig) return null;
+
+  const fmt = (iso: string) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+
+  return (
+    <Card className="mt-4">
+      <CardHeader
+        title="Money that changes every day"
+        subtitle="DoorDash and Lyft pay a different amount each day, so there is no set amount. The app works out the average from your daily list."
+      />
+
+      <div className="mb-5 grid gap-4 sm:grid-cols-3">
+        <StatTile
+          label="Average per month"
+          value={formatMoney(gig.perMonth, currency)}
+          detail="This is what counts towards your budget"
+        />
+        <StatTile label="Average per day" value={formatMoney(gig.perDay, currency)} />
+        <StatTile
+          label="Total in the list"
+          value={formatMoney(gig.total, currency)}
+          detail={`${gig.days} days`}
+        />
+      </div>
+
+      <ul className="mb-4 flex flex-col">
+        {gig.bySource.map((source) => (
+          <li
+            key={source.label}
+            className="flex items-center gap-3 border-b border-hairline py-3 last:border-0"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-ink">{source.label}</p>
+              <p className="text-xs text-muted">
+                {formatMoney(source.total, currency)} over {source.days} days
+              </p>
+            </div>
+            <p className="tnum shrink-0 text-sm font-medium text-ink">
+              {formatMoney(source.perMonth, currency)}
+              <span className="ml-1 text-xs font-normal text-muted">a month</span>
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      <p className="rounded-lg bg-sunken p-3 text-sm text-ink-2">
+        Worked out from {fmt(gig.from)} to {fmt(gig.to)} — {gig.days} days in all. Days you earned
+        nothing are counted too, otherwise the average would come out too high. Add more days below
+        and this updates by itself.
+      </p>
+    </Card>
+  );
+}
+
 /* -- daily ledger --------------------------------------------------------- */
 
 function LedgerCard() {
@@ -239,7 +339,7 @@ function LedgerCard() {
     <Card className="mt-4">
       <CardHeader
         title="Daily earnings"
-        subtitle="Put in what you made each day. It adds up into the chart above."
+        subtitle="Every day you worked. Add a day here and every total on this page updates."
       />
 
       <form
