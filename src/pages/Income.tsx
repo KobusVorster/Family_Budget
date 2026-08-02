@@ -1,0 +1,493 @@
+import { useMemo, useState } from 'react';
+import { newId, useBudget } from '../store/BudgetContext';
+import type { CurrencyCode, Frequency, IncomeKind, IncomeSource, PersonId } from '../types';
+import {
+  amountIn,
+  ledgerSources,
+  monthlyIncome,
+  monthlyValue,
+  weeklyLedger,
+} from '../lib/calc';
+import { FREQUENCIES, FREQUENCY_LABEL, formatMoney, toMonthly } from '../lib/money';
+import { seriesColor } from '../lib/palette';
+import {
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  EstimateMark,
+  Field,
+  Modal,
+  NumberInput,
+  PageHeader,
+  Select,
+  StatTile,
+  TextInput,
+} from '../components/ui';
+import { ChartFrame, DataTable, StackedColumns } from '../components/charts';
+import { IconPlus } from '../components/icons';
+
+const KINDS: IncomeKind[] = ['salary', 'support', 'gig', 'other'];
+const KIND_LABEL: Record<IncomeKind, string> = {
+  salary: 'Salary',
+  support: 'Support',
+  gig: 'Gig work',
+  other: 'Other',
+};
+
+export default function Income() {
+  const { data, conversion, addIncome, updateIncome, removeIncome } = useBudget();
+  const currency = conversion.target;
+  const [editing, setEditing] = useState<IncomeSource | null>(null);
+
+  const sources = useMemo(() => ledgerSources(data.ledger), [data.ledger]);
+  const weekly = useMemo(() => weeklyLedger(data.ledger, conversion, 8), [data.ledger, conversion]);
+
+  const total = monthlyIncome(data, undefined, conversion);
+
+  return (
+    <div className="rise">
+      <PageHeader
+        title="Income"
+        subtitle="What comes in each month, from both sides of the Atlantic. Everything is shown per month so a weekly wage and a monthly salary can sit side by side."
+        action={
+          <Button
+            variant="primary"
+            onClick={() =>
+              setEditing({
+                id: newId('inc'),
+                personId: data.people[0]?.id ?? 'will',
+                label: '',
+                amount: 0,
+                currency: data.people[0]?.currency ?? 'USD',
+                frequency: 'monthly',
+                kind: 'salary',
+                active: true,
+                verified: true,
+              })
+            }
+          >
+            <IconPlus /> Add income
+          </Button>
+        }
+      />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <StatTile label="Household, per month" value={formatMoney(total, currency)} />
+        {data.people.map((person) => (
+          <StatTile
+            key={person.id}
+            label={`${person.name}, per month`}
+            accent={seriesColor(person.slot)}
+            value={formatMoney(monthlyIncome(data, person.id, conversion), currency)}
+            detail={person.country}
+          />
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {data.people.map((person) => {
+          const rows = data.income.filter((source) => source.personId === person.id);
+          return (
+            <Card key={person.id}>
+              <CardHeader
+                title={`${person.fullName}’s income`}
+                subtitle={`Paid in ${person.currency} · ${person.country}`}
+              />
+              {rows.length === 0 ? (
+                <EmptyState
+                  title="Nothing here yet"
+                  body={`Add ${person.name}’s salary or gig earnings to start the picture.`}
+                />
+              ) : (
+                <ul className="flex flex-col">
+                  {rows.map((source) => (
+                    <li
+                      key={source.id}
+                      className="flex items-center gap-3 border-b border-hairline py-3 last:border-0"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-ink">
+                          {source.label || 'Untitled'}
+                          {!source.verified && <EstimateMark />}
+                        </p>
+                        <p className="text-xs text-muted">
+                          {KIND_LABEL[source.kind]} · {FREQUENCY_LABEL[source.frequency]}
+                          {!source.active && ' · paused'}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="tnum text-sm font-medium text-ink">
+                          {formatMoney(monthlyValue(source, conversion), currency)}
+                        </p>
+                        {source.currency !== currency && (
+                          <p className="tnum text-xs text-muted">
+                            {formatMoney(
+                              toMonthly(source.amount, source.frequency),
+                              source.currency,
+                            )}
+                          </p>
+                        )}
+                      </div>
+                      <Button variant="ghost" onClick={() => setEditing(source)}>
+                        Edit
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      <div className="mt-4">
+        <ChartFrame
+          title="Gig income, week by week"
+          subtitle="The day-by-day DoorDash and Lyft log. In the spreadsheet this feed was supposed to roll up into the bottom line but the formulas had gone to #REF! — here it adds up live."
+          legend={sources.map((source, index) => ({
+            label: source,
+            color: seriesColor(4 + index),
+          }))}
+          table={
+            <DataTable
+              columns={['Week of', ...sources, 'Total']}
+              rows={weekly.map((point) => [
+                point.label,
+                ...sources.map((source) => formatMoney(point.bySource[source] ?? 0, currency)),
+                formatMoney(point.total, currency),
+              ])}
+            />
+          }
+        >
+          <StackedColumns
+            currency={currency}
+            height={260}
+            points={weekly.map((point) => ({
+              label: point.label,
+              segments: sources.map((source, index) => ({
+                key: source,
+                value: point.bySource[source] ?? 0,
+                color: seriesColor(4 + index),
+              })),
+            }))}
+          />
+        </ChartFrame>
+      </div>
+
+      <LedgerCard />
+
+      {editing && (
+        <IncomeEditor
+          source={editing}
+          isNew={!data.income.some((item) => item.id === editing.id)}
+          onClose={() => setEditing(null)}
+          onSave={(next) => {
+            if (data.income.some((item) => item.id === next.id)) {
+              updateIncome(next.id, next);
+            } else {
+              addIncome(next);
+            }
+            setEditing(null);
+          }}
+          onDelete={() => {
+            removeIncome(editing.id);
+            setEditing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* -- daily ledger --------------------------------------------------------- */
+
+function LedgerCard() {
+  const { data, conversion, addLedgerEntry, removeLedgerEntry } = useBudget();
+  const [showAll, setShowAll] = useState(false);
+  const [draft, setDraft] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    personId: data.people[0]?.id ?? 'will',
+    label: 'DoorDash',
+    amount: '',
+  });
+
+  const entries = useMemo(
+    () => [...data.ledger].sort((a, b) => b.date.localeCompare(a.date)),
+    [data.ledger],
+  );
+  const visible = showAll ? entries : entries.slice(0, 12);
+
+  const person = data.people.find((p) => p.id === draft.personId);
+
+  const submit = () => {
+    const amount = Number(draft.amount);
+    if (!Number.isFinite(amount) || amount <= 0 || !draft.label.trim()) return;
+    addLedgerEntry({
+      id: newId('led'),
+      date: draft.date,
+      personId: draft.personId,
+      label: draft.label.trim(),
+      amount,
+      currency: person?.currency ?? 'USD',
+      type: 'income',
+    });
+    setDraft((current) => ({ ...current, amount: '' }));
+  };
+
+  return (
+    <Card className="mt-4">
+      <CardHeader
+        title="Daily log"
+        subtitle="One row per day per source. Replaces the wide sheet where every day was its own column."
+      />
+
+      <form
+        className="mb-5 grid gap-3 sm:grid-cols-[auto_1fr_1fr_auto] sm:items-end"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <Field label="Date">
+          {(id) => (
+            <TextInput
+              id={id}
+              type="date"
+              value={draft.date}
+              onChange={(event) => setDraft({ ...draft, date: event.target.value })}
+            />
+          )}
+        </Field>
+        <Field label="Source">
+          {(id) => (
+            <TextInput
+              id={id}
+              value={draft.label}
+              placeholder="DoorDash"
+              onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+            />
+          )}
+        </Field>
+        <Field label={`Amount (${person?.currency ?? 'USD'})`}>
+          {(id) => (
+            <NumberInput
+              id={id}
+              min="0"
+              value={draft.amount}
+              placeholder="0.00"
+              onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
+            />
+          )}
+        </Field>
+        <Button variant="primary" type="submit" className="h-[38px]">
+          Add
+        </Button>
+      </form>
+
+      {entries.length === 0 ? (
+        <EmptyState title="No entries yet" body="Log a day's earnings above and it lands on the chart." />
+      ) : (
+        <>
+          <ul className="flex flex-col">
+            {visible.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex items-center gap-3 border-b border-hairline py-2.5 last:border-0"
+              >
+                <span className="tnum w-24 shrink-0 text-sm text-ink-2">
+                  {new Date(`${entry.date}T00:00:00`).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{entry.label}</span>
+                <span className="tnum shrink-0 text-sm font-medium text-ink">
+                  {formatMoney(entry.amount, entry.currency, { round: false })}
+                </span>
+                {entry.currency !== conversion.target && (
+                  <span className="tnum hidden w-24 shrink-0 text-right text-xs text-muted sm:block">
+                    {formatMoney(
+                      amountIn(entry.amount, entry.currency, conversion),
+                      conversion.target,
+                    )}
+                  </span>
+                )}
+                <Button
+                  variant="ghost"
+                  aria-label={`Delete ${entry.label} on ${entry.date}`}
+                  onClick={() => removeLedgerEntry(entry.id)}
+                >
+                  ✕
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {entries.length > 12 && (
+            <Button className="mt-4" onClick={() => setShowAll(!showAll)}>
+              {showAll ? 'Show recent only' : `Show all ${entries.length} entries`}
+            </Button>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+/* -- editor --------------------------------------------------------------- */
+
+function IncomeEditor({
+  source,
+  isNew,
+  onSave,
+  onClose,
+  onDelete,
+}: {
+  source: IncomeSource;
+  isNew: boolean;
+  onSave: (next: IncomeSource) => void;
+  onClose: () => void;
+  onDelete: () => void;
+}) {
+  const { data } = useBudget();
+  const [draft, setDraft] = useState(source);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={isNew ? 'Add income' : 'Edit income'}
+      footer={
+        <>
+          {!isNew && (
+            <Button variant="danger" onClick={onDelete} className="mr-auto">
+              Delete
+            </Button>
+          )}
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={() => onSave({ ...draft, verified: true })}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4">
+        <Field label="Description">
+          {(id) => (
+            <TextInput
+              id={id}
+              autoFocus
+              value={draft.label}
+              placeholder="Salary"
+              onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+            />
+          )}
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Who earns it">
+            {(id) => (
+              <Select
+                id={id}
+                value={draft.personId}
+                onChange={(event) => {
+                  const personId = event.target.value as PersonId;
+                  const person = data.people.find((p) => p.id === personId);
+                  setDraft({
+                    ...draft,
+                    personId,
+                    currency: person?.currency ?? draft.currency,
+                  });
+                }}
+              >
+                {data.people.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.fullName}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field label="Type">
+            {(id) => (
+              <Select
+                id={id}
+                value={draft.kind}
+                onChange={(event) =>
+                  setDraft({ ...draft, kind: event.target.value as IncomeKind })
+                }
+              >
+                {KINDS.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {KIND_LABEL[kind]}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Amount">
+            {(id) => (
+              <NumberInput
+                id={id}
+                min="0"
+                value={draft.amount}
+                onChange={(event) => setDraft({ ...draft, amount: Number(event.target.value) })}
+              />
+            )}
+          </Field>
+          <Field label="Currency">
+            {(id) => (
+              <Select
+                id={id}
+                value={draft.currency}
+                onChange={(event) =>
+                  setDraft({ ...draft, currency: event.target.value as CurrencyCode })
+                }
+              >
+                <option value="USD">USD</option>
+                <option value="ZAR">ZAR</option>
+              </Select>
+            )}
+          </Field>
+          <Field label="How often">
+            {(id) => (
+              <Select
+                id={id}
+                value={draft.frequency}
+                onChange={(event) =>
+                  setDraft({ ...draft, frequency: event.target.value as Frequency })
+                }
+              >
+                {FREQUENCIES.map((frequency) => (
+                  <option key={frequency} value={frequency}>
+                    {FREQUENCY_LABEL[frequency]}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
+
+        <p className="rounded-lg bg-sunken p-3 text-sm text-ink-2">
+          That works out to{' '}
+          <strong className="tnum font-semibold text-ink">
+            {formatMoney(toMonthly(draft.amount, draft.frequency), draft.currency)}
+          </strong>{' '}
+          a month.
+        </p>
+
+        <label className="flex items-center gap-2 text-sm text-ink-2">
+          <input
+            type="checkbox"
+            checked={draft.active}
+            onChange={(event) => setDraft({ ...draft, active: event.target.checked })}
+          />
+          Counting this towards the budget
+        </label>
+      </div>
+    </Modal>
+  );
+}

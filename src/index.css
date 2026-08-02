@@ -1,0 +1,184 @@
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   The categorical series slots are a validated palette: every adjacent pair
+   clears the CVD and normal-vision separation floors in both light and dark
+   mode. Do not re-order the slots or substitute individual hues without
+   re-validating the whole set — the ordering is what makes it colorblind-safe,
+   not the individual colors.
+
+   Three light-mode slots (aqua, yellow, magenta) sit below 3:1 against the
+   light surface, so every chart ships visible labels and a table view rather
+   than relying on the fill alone to carry a value.
+--------------------------------------------------------------------------- */
+
+/* `static` keeps every token in the output. The series and status colours are
+   referenced from inline styles and SVG `fill`s rather than utility classes, so
+   without it Tailwind tree-shakes them away and the charts render black. */
+@theme static {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-surface: #fcfcfb;
+  --color-plane: #f9f9f7;
+  --color-sunken: #f2f1ee;
+  --color-ink: #0b0b0b;
+  --color-ink-2: #52514e;
+  --color-muted: #898781;
+  --color-grid: #e1e0d9;
+  --color-axis: #c3c2b7;
+  --color-hairline: rgb(11 11 11 / 0.1);
+
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
+  --color-series-7: #4a3aa7;
+  --color-series-8: #e34948;
+
+  --color-good: #0ca30c;
+  --color-warning: #fab219;
+  --color-serious: #ec835a;
+  --color-critical: #d03b3b;
+  --color-delta-up: #006300;
+
+  --color-seq-100: #cde2fb;
+  --color-seq-200: #9ec5f4;
+  --color-seq-300: #6da7ec;
+  --color-seq-450: #2a78d6;
+  --color-seq-600: #184f95;
+
+  --radius-card: 16px;
+}
+
+/* Dark mode is a selected set of steps against the dark surface, not an
+   automatic inversion. Declared under both the OS media query and the explicit
+   theme stamp so the in-app toggle wins in either direction. */
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme='light'])) {
+      color-scheme: dark;
+      --color-surface: #1a1a19;
+      --color-plane: #0d0d0d;
+      --color-sunken: #232322;
+      --color-ink: #ffffff;
+      --color-ink-2: #c3c2b7;
+      --color-muted: #898781;
+      --color-grid: #2c2c2a;
+      --color-axis: #383835;
+      --color-hairline: rgb(255 255 255 / 0.1);
+
+      --color-series-1: #3987e5;
+      --color-series-2: #d95926;
+      --color-series-3: #199e70;
+      --color-series-4: #c98500;
+      --color-series-5: #d55181;
+      --color-series-6: #008300;
+      --color-series-7: #9085e9;
+      --color-series-8: #e66767;
+
+      --color-delta-up: #0ca30c;
+
+      --color-seq-100: #0d366b;
+      --color-seq-200: #104281;
+      --color-seq-300: #184f95;
+      --color-seq-450: #3987e5;
+      --color-seq-600: #86b6ef;
+    }
+  }
+
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --color-surface: #1a1a19;
+    --color-plane: #0d0d0d;
+    --color-sunken: #232322;
+    --color-ink: #ffffff;
+    --color-ink-2: #c3c2b7;
+    --color-muted: #898781;
+    --color-grid: #2c2c2a;
+    --color-axis: #383835;
+    --color-hairline: rgb(255 255 255 / 0.1);
+
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+    --color-series-3: #199e70;
+    --color-series-4: #c98500;
+    --color-series-5: #d55181;
+    --color-series-6: #008300;
+    --color-series-7: #9085e9;
+    --color-series-8: #e66767;
+
+    --color-delta-up: #0ca30c;
+
+    --color-seq-100: #0d366b;
+    --color-seq-200: #104281;
+    --color-seq-300: #184f95;
+    --color-seq-450: #3987e5;
+    --color-seq-600: #86b6ef;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-plane);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  /* Every focusable thing gets the same visible ring — keyboard users see the
+     same affordances mouse users do. */
+  :focus-visible {
+    outline: 2px solid var(--color-series-1);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@utility card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-card);
+}
+
+/* Numeric columns align vertically; large standalone figures keep the font's
+   proportional digits so they don't look loose at display sizes. */
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes fb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility rise {
+  animation: fb-rise 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}

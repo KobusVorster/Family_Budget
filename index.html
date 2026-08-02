@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Shared family budget across the US and South Africa." />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cg fill='%23fff'%3E%3Crect x='7' y='16' width='4' height='9' rx='1.5'/%3E%3Crect x='14' y='11' width='4' height='14' rx='1.5'/%3E%3Crect x='21' y='7' width='4' height='18' rx='1.5'/%3E%3C/g%3E%3C/svg%3E"
+    />
+    <meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)" />
+    <title>Family Budget</title>
+    <script>
+      // Apply the saved theme before first paint so there is no flash.
+      try {
+        var t = localStorage.getItem('family-budget:theme');
+        if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
