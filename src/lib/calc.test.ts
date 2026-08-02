@@ -26,8 +26,7 @@ function seed(): BudgetData {
 
 describe('frequency normalisation', () => {
   it('uses the real number of weeks in a month, not four', () => {
-    // The workbook multiplied weekly amounts by 4, losing about 8% of every
-    // weekly line.
+    // A flat x4 loses about 8% of every weekly bill.
     expect(toMonthly(100, 'weekly')).toBeCloseTo(433.33, 2);
     expect(toMonthly(100, 'weekly')).toBeGreaterThan(400);
     expect(WEEKS_PER_MONTH).toBeCloseTo(4.3333, 4);
@@ -57,21 +56,21 @@ describe('currency conversion', () => {
   });
 });
 
-describe('the figures the workbook actually pinned down', () => {
+describe('the figures that are known to be real', () => {
   const data = seed();
 
   it("keeps Liz's income at R31,954", () => {
     expect(monthlyIncome(data, 'liz', inRand)).toBeCloseTo(31954, 2);
   });
 
-  it("keeps Liz's own expenses at R34,323.09", () => {
+  it("keeps Liz's own bills at R34,323.09", () => {
     const own = data.expenses
       .filter((expense) => expense.owner === 'liz')
       .reduce((total, expense) => total + monthlyValue(expense, inRand), 0);
     expect(own).toBeCloseTo(34323.09, 2);
   });
 
-  it('reproduces the R2,369.09 shortfall from SA!C7', () => {
+  it('shows Liz short by R2,369.09 a month', () => {
     const income = monthlyIncome(data, 'liz', inRand);
     const own = data.expenses
       .filter((expense) => expense.owner === 'liz')
@@ -79,7 +78,7 @@ describe('the figures the workbook actually pinned down', () => {
     expect(income - own).toBeCloseTo(-LIZ_MONTHLY_SHORTFALL, 2);
   });
 
-  it('converts the R1,500-a-week Daddy payment to a monthly figure', () => {
+  it('turns the R1,500-a-week Daddy payment into a monthly amount', () => {
     const daddy = data.expenses.find((expense) => expense.id === 'exp-shared-daddy')!;
     expect(daddy.amount).toBe(1500);
     expect(daddy.frequency).toBe('weekly');
@@ -158,8 +157,8 @@ describe('consolidated debts', () => {
   });
 
   it('moves with the old loan instead of holding a stale number', () => {
-    // This is the bug in the workbook: B34 hardcoded 15,000 rather than
-    // pointing at B33, so paying the first loan down left the second wrong.
+    // A fixed 15,000 here would go stale the moment the first loan is paid
+    // down, leaving the second loan's balance wrong.
     const paidDown = base.map((debt) =>
       debt.id === 'old'
         ? { ...debt, payments: debt.payments.map((payment) => ({ ...payment, paid: true })) }

@@ -387,23 +387,35 @@ export function ledgerSources(entries: LedgerEntry[]): string[] {
 
 export interface ReviewItem {
   id: string;
-  kind: 'Income' | 'Expense' | 'Debt';
   label: string;
-  detail: string;
+  /** Whose line it is. */
+  who: string;
+  /** The page it lives on, so the app can send you straight there. */
+  page: 'income' | 'expenses' | 'debt';
+  /** Must read exactly as the menu reads, or the instruction sends someone
+   *  looking for a page name that is not on screen. */
+  pageName: string;
+  amount: number;
+  currency: CurrencyCode;
 }
 
-/** Everything still carrying a placeholder amount, so the app can say plainly
- *  how much of the picture is guessed. */
+/** Every amount that is still a guess. Each one carries the page it lives on,
+ *  so the list can say exactly where to go and not just that something is
+ *  wrong. */
 export function reviewQueue(data: BudgetData): ReviewItem[] {
   const items: ReviewItem[] = [];
+  const nameOf = (id: PersonId) => data.people.find((person) => person.id === id)?.name ?? '';
 
   for (const source of data.income) {
     if (!source.verified) {
       items.push({
         id: source.id,
-        kind: 'Income',
         label: source.label,
-        detail: data.people.find((p) => p.id === source.personId)?.name ?? '',
+        who: nameOf(source.personId),
+        page: 'income',
+        pageName: 'Money in',
+        amount: source.amount,
+        currency: source.currency,
       });
     }
   }
@@ -411,12 +423,12 @@ export function reviewQueue(data: BudgetData): ReviewItem[] {
     if (!expense.verified) {
       items.push({
         id: expense.id,
-        kind: 'Expense',
         label: expense.label,
-        detail:
-          expense.owner === 'shared'
-            ? 'Shared'
-            : (data.people.find((p) => p.id === expense.owner)?.name ?? ''),
+        who: expense.owner === 'shared' ? 'Shared' : nameOf(expense.owner),
+        page: 'expenses',
+        pageName: 'Money out',
+        amount: expense.amount,
+        currency: expense.currency,
       });
     }
   }
@@ -424,9 +436,12 @@ export function reviewQueue(data: BudgetData): ReviewItem[] {
     if (!debt.verified) {
       items.push({
         id: debt.id,
-        kind: 'Debt',
         label: debt.label,
-        detail: data.people.find((p) => p.id === debt.personId)?.name ?? '',
+        who: nameOf(debt.personId),
+        page: 'debt',
+        pageName: 'Debt',
+        amount: debt.principal,
+        currency: debt.currency,
       });
     }
   }

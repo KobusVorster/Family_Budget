@@ -1,8 +1,9 @@
 import type { CurrencyCode, Frequency } from '../types';
 
-/** Average weeks in a month (52 / 12). The spreadsheet used a flat ×4, which
- *  quietly under-counts every weekly expense by about 8% — roughly a month of
- *  spend a year. */
+/** Average weeks in a month (52 / 12).
+ *
+ *  Not 4. Using a flat ×4 under-counts every weekly bill by about 8% — roughly
+ *  one extra month of that bill a year that the budget never sees. */
 export const WEEKS_PER_MONTH = 52 / 12;
 
 const PER_MONTH: Record<Frequency, number> = {

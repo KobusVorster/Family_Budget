@@ -60,9 +60,9 @@ export function exportFile(data: BudgetData): void {
 export async function importFile(file: File): Promise<BudgetData> {
   const text = await file.text();
   const parsed = JSON.parse(text) as Partial<BudgetData>;
-  if (!parsed || typeof parsed !== 'object') throw new Error('That file is not a budget export.');
+  if (!parsed || typeof parsed !== 'object') throw new Error('That is not a file this app saved. Pick a .json file you saved with “Save a copy”.');
   if (!Array.isArray(parsed.expenses) && !Array.isArray(parsed.income)) {
-    throw new Error('That file has no income or expenses in it.');
+    throw new Error('That file has no money in or bills in it. Pick a different one.');
   }
   return migrate(parsed);
 }

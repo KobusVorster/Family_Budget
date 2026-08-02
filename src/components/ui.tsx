@@ -195,14 +195,14 @@ export function Badge({
   );
 }
 
-/** Marks an amount the app filled in rather than read off the spreadsheet. */
+/** Marks an amount nobody has confirmed yet. */
 export function EstimateMark() {
   return (
     <span
-      title="Estimated — check this against your spreadsheet"
+      title="This amount is a guess. Press Edit and type the real one."
       className="ml-1.5 cursor-help align-middle text-[0.7rem] font-medium text-muted"
     >
-      est.
+      guess
     </span>
   );
 }

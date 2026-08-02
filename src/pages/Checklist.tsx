@@ -53,7 +53,7 @@ export default function Checklist() {
       })),
       {
         id: 'shared',
-        title: 'Shared household',
+        title: 'Shared bills',
         color: seriesColor(3),
         items: expenses.filter((expense) => expense.owner === 'shared'),
       },
@@ -66,8 +66,8 @@ export default function Checklist() {
   return (
     <div className="rise">
       <PageHeader
-        title="Monthly check"
-        subtitle="Tick each bill off as it clears. This is the month-end grid from the spreadsheet, one month at a time instead of seven columns of TRUE and FALSE."
+        title="Checklist"
+        subtitle="Tick off each bill when you pay it. Use the arrows to change month."
       />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -81,13 +81,13 @@ export default function Checklist() {
           </Button>
         </div>
         {!isCurrentMonth && (
-          <Button onClick={() => setMonth(monthKey(new Date()))}>Back to this month</Button>
+          <Button onClick={() => setMonth(monthKey(new Date()))}>Go to this month</Button>
         )}
       </div>
 
       <div className="mb-4 grid gap-4 sm:grid-cols-3">
         <StatTile
-          label="Ticked off"
+          label="Paid"
           value={`${progress.paid} / ${progress.total}`}
           tone={fraction >= 1 ? 'good' : undefined}
         >
@@ -100,12 +100,12 @@ export default function Checklist() {
           </div>
         </StatTile>
         <StatTile
-          label="Still to pay"
+          label="Left to pay"
           value={formatMoney(progress.outstanding, currency)}
           tone={progress.outstanding > 0 ? undefined : 'good'}
         />
         <StatTile
-          label="Already paid"
+          label="Paid so far"
           value={formatMoney(
             expenses.reduce(
               (total, expense) =>
@@ -122,8 +122,8 @@ export default function Checklist() {
       {expenses.length === 0 ? (
         <Card>
           <EmptyState
-            title="No active expenses"
-            body="Add expenses and they will appear here to tick off each month."
+            title="No bills yet"
+            body="Add bills on the Money out page and they will show up here."
           />
         </Card>
       ) : (

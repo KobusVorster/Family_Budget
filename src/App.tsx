@@ -31,11 +31,11 @@ interface Route {
 
 const ROUTES: Route[] = [
   { id: 'overview', label: 'Overview', short: 'Home', icon: IconOverview, component: Dashboard },
-  { id: 'income', label: 'Income', short: 'Income', icon: IconIncome, component: Income },
-  { id: 'expenses', label: 'Expenses', short: 'Spend', icon: IconExpenses, component: Expenses },
+  { id: 'income', label: 'Money in', short: 'In', icon: IconIncome, component: Income },
+  { id: 'expenses', label: 'Money out', short: 'Out', icon: IconExpenses, component: Expenses },
   { id: 'shared', label: 'Shared', short: 'Shared', icon: IconShared, component: Shared },
   { id: 'debt', label: 'Debt', short: 'Debt', icon: IconDebt, component: Debts },
-  { id: 'checklist', label: 'Monthly check', short: 'Check', icon: IconChecklist, component: Checklist },
+  { id: 'checklist', label: 'Checklist', short: 'List', icon: IconChecklist, component: Checklist },
   { id: 'settings', label: 'Settings', short: 'Setup', icon: IconSettings, component: Settings },
 ];
 
@@ -120,7 +120,7 @@ export default function App() {
             $1 = R{data.settings.usdZarRate.toFixed(4)}
           </p>
           <p className="mt-0.5 text-xs text-muted">
-            Rate set {new Date(`${data.settings.rateUpdatedAt}T00:00:00`).toLocaleDateString()}
+            Set {new Date(`${data.settings.rateUpdatedAt}T00:00:00`).toLocaleDateString()}
           </p>
         </div>
       </nav>

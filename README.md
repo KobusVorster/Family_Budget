@@ -1,178 +1,107 @@
 # Family Budget
 
-A dashboard for a household split across two countries and two currencies: Willem
-in the United States earning dollars, Lizanne in South Africa earning rand, each
-with their own income and bills, plus a block of South African household costs
-they carry together.
+A budget app for a family split across two countries. Will is in the United
+States and earns dollars. Liz is in South Africa and earns rand. They each have
+their own bills, and they share the costs of the South African house.
 
-It replaces a five-tab Excel workbook. Everything runs in the browser — no
-server, no account, no data leaving the machine.
+This app is the record. Everything lives here.
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build    # static bundle in dist/
-npm test         # the money maths
+npm run dev      # open http://localhost:5173
+npm run build    # static site in dist/
+npm test         # checks the maths
 ```
 
-The build output is a plain static site with relative asset paths, so `dist/`
-can be dropped on GitHub Pages, Netlify, or any static host without
-configuration.
+`npm run build:single` makes one self-contained HTML file you can email to
+someone or open straight from disk.
 
-## What each page does
+## The pages
 
-**Overview** leads with one number: what the household has left at the end of a
-month, once every commitment on both sides is counted. Below it, each person's
-position, how much of their income is already spoken for, where the money goes
-by category, the gig-income trend, and every debt's progress.
+| Page | What it does |
+| --- | --- |
+| Overview | What is left each month, and how the rest of the app is doing |
+| Money in | Salaries, child support, and the daily gig earnings log |
+| Money out | Every bill, filtered by whose it is |
+| Shared | The South African house costs, and who owes who |
+| Debt | Every loan, what is left, and when it is paid off |
+| Checklist | Tick off each bill as you pay it, month by month |
+| Settings | Exchange rate, display, and saving your data |
 
-**Income** holds the recurring lines — salaries, child support — and the daily
-gig log. The log is one row per day per source, replacing a sheet where every
-day was its own column, and it rolls up into the totals live.
+## Amounts marked "guess"
 
-**Expenses** lists every committed cost, filtered by whose it is. Weekly,
-fortnightly and monthly bills are all normalised to a monthly figure so they can
-actually be compared, and each line shows both the reporting currency and the
-currency it was entered in.
+Some amounts have not been confirmed by anyone yet. They show a small **guess**
+label wherever they appear, and Settings lists every one with the page it is on.
 
-**Shared** is the South African household block: what it costs, who carries
-each part, who actually pays it, and the single transfer that would square the
-month up. The rent split lives here — set the total and Daddy's contribution and
-Will's portion follows.
+To fix one: open the page shown, press Edit, type the real amount, press Save.
+The label disappears and the item drops off the list.
 
-**Debt** tracks each loan against its repayment schedule: what is left, what
-percentage is cleared, when the plan finishes, and what is due next. Ticking a
-payment off updates everything above it.
+Liz's 22 personal bills are each a guess, but together they add up to exactly
+R34,323.09, which is a real total. So correcting them one at a time only moves
+money between groups — the bottom line stays right the whole way through.
 
-**Monthly check** is the month-end grid: tick each bill as it clears, for any
-month, with a running total of what is still to pay.
+## Rules the app follows
 
-**Settings** holds the exchange rate, display preferences, the review queue, and
-backup import/export.
+**Everything becomes a monthly amount.** A weekly bill is multiplied by 4.33,
+not 4, because that is how many weeks are actually in a month. Using 4 loses
+about 8% of every weekly bill — roughly one extra month of it a year.
 
-## The numbers it shipped with
+**The exchange rate is typed in by hand.** There is no live feed. Settings shows
+when it was last changed and warns after 30 days.
 
-The app starts loaded rather than blank, because an empty dashboard tells you
-nothing about whether the design works. Two kinds of figure are in there and the
-app distinguishes them everywhere.
+**Who pays and who owes are separate.** A shared bill records whose account it
+leaves and what share each person should carry. The gap between the two is what
+one owes the other, worked out on the Shared page.
 
-**From the workbook.** These are exact:
+**Numbers that depend on each other are linked, not copied.** The South African
+rent split is derived from the full rent and Daddy's share. A loan that paid off
+an older loan reads that loan's balance live. Neither can drift out of step.
 
-| Figure | Value | Source |
-| --- | --- | --- |
-| Liz's salary | R25,000 / month | `SA!B3` |
-| Katy-Anne child support | R6,954 / month | `SA!B4` |
-| Liz's total monthly expenses | R34,323.09 | derived from `SA!C7` |
-| Liz's monthly shortfall | R2,369.09 | `SA!C7` |
-| Total South African rent | R14,373 | `SA!E2` |
-| Daddy support | R1,500 / week | `Will Debt and Expenses!C12` |
-| Oom Fanus loan | R13,070 borrowed | `Liz Debt And Expenses!B2` |
-| First work loan | R37,500 borrowed | `Liz Debt And Expenses!B17` |
-| Current work loan | R230,000 over 33 months | `Liz Debt And Expenses!B32` |
-| UR shares payback | R130,208 outstanding | `UR shares pay back!A2` |
-| USD/ZAR rate | 16.4612 | the frozen fallback both sheets carried |
+## Saving and sharing
 
-**Placeholders.** The workbook summary named a lot of lines without carrying
-their amounts through — Liz's 22 individual expense rows, Will's US bills, the
-domestic-help and internet figures, Daddy's share of the rent. Those are filled
-with plausible values, marked `est.` in the interface, counted in the sidebar
-badge, and listed on the Settings page. Editing one clears its flag.
+Data is stored in the browser under `family-budget:data` and is not sent
+anywhere. Two people cannot edit the same copy.
 
-Liz's 22 lines are individually guessed but chosen to sum to **exactly
-R34,323.09** — the total her sheet does pin down. Correcting them moves money
-between categories without changing the household bottom line, so the dashboard
-stays honest while the detail is being filled in.
+To share changes: **Save a copy** in Settings, send the file, and the other
+person uses **Open a saved copy**.
 
-A banner says all of this until the first edit.
+If shared editing matters more than having no server, `lib/storage.ts` is the
+one file a backend would replace — the rest of the app talks to the store, not
+to storage.
 
-## What the workbook got wrong, and what changed
-
-Rebuilding surfaced six real defects. Each is fixed rather than carried over:
-
-**The income link was dead.** Will's bottom line pulled his DoorDash and Lyft
-totals from the daily sheet, but `L2:L4` and `M2` had gone to `#REF!` — the
-"remaining amount" the whole sheet built towards was unusable. The daily log now
-feeds the totals directly.
-
-**Both exchange-rate cells were fake.** `SA!G2` and `Will Debt and
-Expenses!I2` each called `GOOGLEFINANCE`, a Google Sheets function Excel does
-not have, wrapped in `IFERROR`. Both had silently returned the hardcoded
-fallback 16.4612 for as long as the file had been in Excel — and being two
-independent cells, they could drift apart. There is now one rate, entered by
-hand, shown with the date it was set, with a warning once it goes stale.
-
-**A hardcoded number where a reference belonged.** `Liz Debt And
-Expenses!B34` computed the current work loan's balance as `B32-15000` instead of
-`B32-B33`. The values happened to agree, but paying the first loan down would
-have left the second one wrong. Consolidation is now a live link between the two
-debts, and there is a test for it.
-
-**A sign error on Liz's shortfall.** Row 13 of Will's sheet *added* `SA!C7` to
-his costs. That cell is negative, so adding it subtracted roughly R2,369 a month
-from what Will was budgeting to send — the error ran the wrong way, understating
-his obligation. Covering the shortfall is counted as a cost here.
-
-**Weekly bills were under-counted by 8%.** Column H multiplied weekly amounts
-by 4. A month averages 4.33 weeks, so every weekly line was short — about a
-month of that spend a year. Normalisation now uses 52/12.
-
-**Structures that no longer earned their place.** `Table_1` claimed 29 generic
-columns out to row 1001 for a 14-column, 17-row dataset; `SA` rows 41-49 were an
-empty forward tracker; the `Will Income` expense rows were unused labels. None
-were carried across. The seven-column TRUE/FALSE month-end grid became the
-Monthly check page, which works for any month rather than January to July.
-
-## How it is built
-
-Vite, React and TypeScript, with Tailwind v4 for styling. No charting library —
-the charts are a few hundred lines of SVG and HTML, which is smaller than a
-dependency and gives exact control over the mark specifications below.
+## Code layout
 
 ```
 src/
-  types.ts              the domain model
-  data/seed.ts          the workbook, transcribed
+  types.ts              the data model
+  data/seed.ts          the numbers a fresh install starts with
   lib/money.ts          currency and frequency conversion, formatting
-  lib/calc.ts           every derived figure — totals, settlement, debt payoff
-  lib/calc.test.ts      28 tests, including the workbook reconciliations
-  lib/palette.ts        entity-to-colour assignment
-  store/BudgetContext   state, persistence, migration
-  components/           ui primitives, charts, icons
-  pages/                one file per view
+  lib/calc.ts           every worked-out figure — totals, who owes who, payoff
+  lib/calc.test.ts      28 tests
+  lib/palette.ts        which colour belongs to which person or category
+  store/BudgetContext   state, saving, upgrading old saves
+  components/           buttons, cards, charts, icons
+  pages/                one file per page
 ```
 
-`lib/calc.ts` holds all the arithmetic and has no React in it, so the money
-maths is testable on its own. The tests pin the seed to the workbook: if
-Liz's expense lines stop summing to R34,323.09, or the consolidated loan stops
-tracking the loan it cleared, the suite fails.
+`lib/calc.ts` has no React in it, so the money maths is tested on its own.
 
-### Colour and charts
+## Colour and charts
 
-The series palette is validated rather than chosen by eye. Every adjacent pair
-clears the colourblind-separation and normal-vision floors in both light and
-dark mode, and the slot *ordering* is what makes that true — re-ordering the
-hues breaks it. Slots 1 and 2 belong to Will and Liz across the whole app and
-are never reassigned, so a filter can never repaint a person's colour.
+The chart colours are checked by script, not by eye. Every neighbouring pair is
+far enough apart to stay distinct for colourblind readers, in both light and
+dark mode. The **order** of the colours is what makes that true, so do not
+reorder or swap them without re-running the check.
 
-Three light-mode slots sit below 3:1 contrast against the light surface. The
-rule for those is that no value may depend on the fill alone, so every chart
-carries visible labels *and* a table view, reachable from the toggle in its
-header. Dark mode is a separately chosen set of steps against the dark surface,
-not an inverted copy.
+Will is always colour 1 and Liz is always colour 2, everywhere in the app, so a
+filter can never repaint someone.
 
-Bars cap at 24px with a 4px rounded data-end; lines are 2px; stacked segments
-are separated by a 2px gap in the surface colour rather than a border; grids are
-solid hairlines. Where the data is a single ratio it gets a meter, and where it
-is a single number it gets a stat tile, rather than being forced into a chart.
+Every chart has a **Table** button, and all text meets WCAG AA at the size it is
+actually drawn. Two rules follow from that and are enforced in code:
 
-### Storage and sharing
-
-Everything lives in this browser's `localStorage` under `family-budget:data`,
-and nothing is transmitted anywhere. Saves are debounced, and a corrupt or
-outdated blob is migrated or replaced rather than left to break the app.
-
-That means **two people on two continents cannot both edit the same data.** To
-stay in sync, whoever makes changes exports a backup from Settings and sends the
-file; the other imports it. If shared editing matters more than
-zero-infrastructure, the place to add a backend is `lib/storage.ts` — the rest
-of the app talks to the store, not to storage.
+- Text may only be tinted `good` or `critical`. Amber measures 1.79:1 on the
+  light background — unreadable at any size — so amber state is carried by a
+  meter or a label instead. The `TextTone` type makes this a compile error.
+- Base styles that set page colour live **outside** `@layer base`. Unlayered CSS
+  beats layered CSS, so a host page's own reset would otherwise override them
+  and every element that inherits its colour would get the wrong one.

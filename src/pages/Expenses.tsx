@@ -33,7 +33,7 @@ export default function Expenses() {
 
   const scopeOptions = useMemo(
     () => [
-      { value: 'all' as Scope, label: 'Everything' },
+      { value: 'all' as Scope, label: 'All' },
       ...data.people.map((person) => ({ value: person.id as Scope, label: person.name })),
       { value: 'shared' as Scope, label: 'Shared' },
     ],
@@ -94,11 +94,11 @@ export default function Expenses() {
   return (
     <div className="rise">
       <PageHeader
-        title="Expenses"
-        subtitle="Every committed cost, normalised to a monthly figure so weekly, fortnightly and monthly bills are directly comparable."
+        title="Money out"
+        subtitle="Every bill you pay. Shown as a monthly amount so weekly and monthly bills can be compared."
         action={
           <Button variant="primary" onClick={() => setEditing(blank())}>
-            <IconPlus /> Add expense
+            <IconPlus /> Add a bill
           </Button>
         }
       />
@@ -107,7 +107,7 @@ export default function Expenses() {
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <SegmentedControl label="Whose expenses" value={scope} onChange={setScope} options={scopeOptions} />
         <p className="text-sm text-ink-2">
-          {filtered.filter((expense) => expense.active).length} active ·{' '}
+          {filtered.filter((expense) => expense.active).length} bills ·{' '}
           <strong className="tnum font-semibold text-ink">
             {formatMoney(monthlyTotal, currency)}
           </strong>{' '}
@@ -119,7 +119,7 @@ export default function Expenses() {
         <StatTile label="Per month" value={formatMoney(monthlyTotal, currency)} />
         <StatTile label="Per year" value={formatMoney(monthlyTotal * 12, currency, { compact: true })} />
         <StatTile
-          label="Biggest category"
+          label="Biggest group"
           value={categories[0]?.category ?? '—'}
           detail={
             categories[0]
@@ -131,8 +131,8 @@ export default function Expenses() {
 
       <div className="mb-4">
         <ChartFrame
-          title="By category"
-          subtitle="One colour for the whole set — the bar length already carries the size, so tinting by amount would say the same thing twice."
+          title="By group"
+          subtitle="Biggest first."
           table={
             <DataTable
               columns={['Category', 'Per month', 'Share']}
@@ -158,11 +158,11 @@ export default function Expenses() {
       {grouped.length === 0 ? (
         <Card>
           <EmptyState
-            title="Nothing in this view"
-            body="Add an expense, or switch the filter above to see another slice."
+            title="Nothing here"
+            body="Press the button below to add a bill, or change the filter at the top."
             action={
               <Button variant="primary" onClick={() => setEditing(blank())}>
-                Add expense
+                Add a bill
               </Button>
             }
           />
@@ -174,7 +174,7 @@ export default function Expenses() {
               <CardHeader
                 inset
                 title={group.category}
-                subtitle={`${group.items.length} line${group.items.length === 1 ? '' : 's'}`}
+                subtitle={`${group.items.length} bill${group.items.length === 1 ? '' : 's'}`}
                 action={
                   <span className="tnum text-sm font-semibold text-ink">
                     {formatMoney(group.total, currency)}
@@ -323,7 +323,7 @@ function ExpenseEditor({
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Add expense' : 'Edit expense'}
+      title={isNew ? 'Add a bill' : 'Edit bill'}
       footer={
         <>
           {!isNew && (
@@ -356,7 +356,7 @@ function ExpenseEditor({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Whose expense">
+          <Field label="Who pays for it">
             {(id) => (
               <Select
                 id={id}
@@ -372,7 +372,7 @@ function ExpenseEditor({
               </Select>
             )}
           </Field>
-          <Field label="Category">
+          <Field label="Group">
             {(id) => (
               <Select
                 id={id}
@@ -436,7 +436,7 @@ function ExpenseEditor({
         </div>
 
         <p className="rounded-lg bg-sunken p-3 text-sm text-ink-2">
-          That works out to{' '}
+          That is{' '}
           <strong className="tnum font-semibold text-ink">
             {formatMoney(toMonthly(draft.amount, draft.frequency), draft.currency)}
           </strong>{' '}
@@ -445,10 +445,10 @@ function ExpenseEditor({
 
         {isShared && (
           <div className="rounded-lg border border-hairline p-4">
-            <p className="mb-3 text-sm font-medium text-ink">Who carries this cost</p>
+            <p className="mb-3 text-sm font-medium text-ink">Who should pay for it</p>
             <div className="grid gap-3">
               {data.people.map((person) => (
-                <Field key={person.id} label={`${person.fullName}’s share (%)`}>
+                <Field key={person.id} label={`${person.name}’s share (%)`}>
                   {(id) => (
                     <NumberInput
                       id={id}
@@ -463,11 +463,12 @@ function ExpenseEditor({
             </div>
             {Math.abs(splitTotal - 1) > 0.001 && (
               <p className="mt-3 text-sm" style={{ color: 'var(--color-critical-text)' }}>
-                The shares add up to {Math.round(splitTotal * 100)}%. They need to make 100%.
+                The two shares add up to {Math.round(splitTotal * 100)}%. Change them so they add
+                up to 100%.
               </p>
             )}
             <div className="mt-4">
-              <Field label="Paid from whose account">
+              <Field label="Whose account it comes out of">
                 {(id) => (
                   <Select
                     id={id}
@@ -483,14 +484,14 @@ function ExpenseEditor({
                 )}
               </Field>
               <p className="mt-2 text-xs text-muted">
-                Who pays and who carries the cost are different questions — the gap between them is
-                the settlement on the Shared page.
+                Who pays it and who should pay for it can be different. The Shared page works out
+                who owes who.
               </p>
             </div>
           </div>
         )}
 
-        <Field label="Account or card" hint="Optional — helps when reconciling a statement.">
+        <Field label="Account or card" hint="Optional. Handy when checking a bank statement.">
           {(id) => (
             <TextInput
               id={id}
@@ -507,11 +508,11 @@ function ExpenseEditor({
             checked={draft.active}
             onChange={(event) => setDraft({ ...draft, active: event.target.checked })}
           />
-          Counting this towards the budget
+          Count this in the totals
         </label>
 
         {!isNew && !expense.verified && (
-          <Badge tone="warning">Saving marks this as checked against your sheet</Badge>
+          <Badge tone="warning">Saving removes the "guess" mark</Badge>
         )}
       </div>
     </Modal>

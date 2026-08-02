@@ -48,8 +48,8 @@ export default function Income() {
   return (
     <div className="rise">
       <PageHeader
-        title="Income"
-        subtitle="What comes in each month, from both sides of the Atlantic. Everything is shown per month so a weekly wage and a monthly salary can sit side by side."
+        title="Money in"
+        subtitle="Money coming in. Everything is shown as a monthly amount so you can compare it."
         action={
           <Button
             variant="primary"
@@ -67,13 +67,13 @@ export default function Income() {
               })
             }
           >
-            <IconPlus /> Add income
+            <IconPlus /> Add money in
           </Button>
         }
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatTile label="Household, per month" value={formatMoney(total, currency)} />
+        <StatTile label="Both of you, per month" value={formatMoney(total, currency)} />
         {data.people.map((person) => (
           <StatTile
             key={person.id}
@@ -91,13 +91,13 @@ export default function Income() {
           return (
             <Card key={person.id}>
               <CardHeader
-                title={`${person.fullName}’s income`}
-                subtitle={`Paid in ${person.currency} · ${person.country}`}
+                title={`${person.name}’s money in`}
+                subtitle={person.currency === 'USD' ? 'Paid in dollars' : 'Paid in rand'}
               />
               {rows.length === 0 ? (
                 <EmptyState
                   title="Nothing here yet"
-                  body={`Add ${person.name}’s salary or gig earnings to start the picture.`}
+                  body={`Press "Add money in" to put in ${person.name}’s salary or gig pay.`}
                 />
               ) : (
                 <ul className="flex flex-col">
@@ -143,8 +143,8 @@ export default function Income() {
 
       <div className="mt-4">
         <ChartFrame
-          title="Gig income, week by week"
-          subtitle="The day-by-day DoorDash and Lyft log. In the spreadsheet this feed was supposed to roll up into the bottom line but the formulas had gone to #REF! — here it adds up live."
+          title="Gig money, per week"
+          subtitle="Your daily earnings added up week by week."
           legend={sources.map((source, index) => ({
             label: source,
             color: seriesColor(4 + index),
@@ -238,8 +238,8 @@ function LedgerCard() {
   return (
     <Card className="mt-4">
       <CardHeader
-        title="Daily log"
-        subtitle="One row per day per source. Replaces the wide sheet where every day was its own column."
+        title="Daily earnings"
+        subtitle="Put in what you made each day. It adds up into the chart above."
       />
 
       <form
@@ -286,7 +286,7 @@ function LedgerCard() {
       </form>
 
       {entries.length === 0 ? (
-        <EmptyState title="No entries yet" body="Log a day's earnings above and it lands on the chart." />
+        <EmptyState title="Nothing here yet" body="Fill in the date, where it came from and the amount, then press Add." />
       ) : (
         <>
           <ul className="flex flex-col">
@@ -325,7 +325,7 @@ function LedgerCard() {
           </ul>
           {entries.length > 12 && (
             <Button className="mt-4" onClick={() => setShowAll(!showAll)}>
-              {showAll ? 'Show recent only' : `Show all ${entries.length} entries`}
+              {showAll ? 'Show fewer' : `Show all ${entries.length}`}
             </Button>
           )}
         </>
@@ -356,7 +356,7 @@ function IncomeEditor({
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Add income' : 'Edit income'}
+      title={isNew ? 'Add money in' : 'Edit money in'}
       footer={
         <>
           {!isNew && (
@@ -472,7 +472,7 @@ function IncomeEditor({
         </div>
 
         <p className="rounded-lg bg-sunken p-3 text-sm text-ink-2">
-          That works out to{' '}
+          That is{' '}
           <strong className="tnum font-semibold text-ink">
             {formatMoney(toMonthly(draft.amount, draft.frequency), draft.currency)}
           </strong>{' '}
@@ -485,7 +485,7 @@ function IncomeEditor({
             checked={draft.active}
             onChange={(event) => setDraft({ ...draft, active: event.target.checked })}
           />
-          Counting this towards the budget
+          Count this in the totals
         </label>
       </div>
     </Modal>

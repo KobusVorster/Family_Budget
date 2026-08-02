@@ -34,8 +34,8 @@ export interface IncomeSource {
   frequency: Frequency;
   kind: IncomeKind;
   active: boolean;
-  /** False when the figure was estimated during the spreadsheet import rather
-   *  than read straight off it. Surfaced in the UI so it can be corrected. */
+  /** False while the amount is still a guess. Shown as "guess" in the UI and
+   *  listed on the Settings page until someone types the real one. */
   verified: boolean;
   note?: string;
 }
@@ -89,10 +89,9 @@ export interface Debt {
   currency: CurrencyCode;
   /** Original amount borrowed. */
   principal: number;
-  /** Set when this loan consolidated an earlier one: part of the principal
-   *  went straight to clearing that debt rather than to the borrower. The
-   *  offset is read live off the other debt's remaining balance, which is what
-   *  the workbook's hardcoded 15,000 should have been. */
+  /** Set when this loan paid off an earlier one: part of the principal went
+   *  straight to clearing that debt rather than to the borrower. Read live off
+   *  the other debt's balance, so the two can never disagree. */
   offsetFromDebtId?: string;
   payments: DebtPayment[];
   verified: boolean;
@@ -111,8 +110,7 @@ export interface LedgerEntry {
   type: 'income' | 'expense';
 }
 
-/** `${expenseId}:${YYYY-MM}` -> paid. Replaces the spreadsheet's TRUE/FALSE
- *  month-end grid. */
+/** `${expenseId}:${YYYY-MM}` -> paid. Drives the monthly checklist. */
 export type Checklist = Record<string, boolean>;
 
 export interface Settings {
@@ -129,13 +127,11 @@ export interface Settings {
    *  edit flips it to `live` and retires the sample-data banner. */
   dataMode: 'sample' | 'live';
 
-  /** The full monthly rent on the South African house (workbook `SA!E2`). */
+  /** The full monthly rent on the South African house. */
   saTotalRent: number;
-  /** Daddy's contribution towards it (workbook `SA!C9`). Will covers the
-   *  difference, and the shared rent expense is kept in step with these two
-   *  rather than being typed in separately — the workbook's habit of
-   *  hardcoding a figure that should have been a reference is what put its
-   *  loan balances out of sync. */
+  /** Daddy's contribution towards it. Will covers the difference, and the
+   *  shared rent bill is derived from these two rather than typed in
+   *  separately, so the three can never disagree. */
   saRentFromDaddy: number;
   /** The shared expense the rent split writes into. */
   saRentExpenseId: string;

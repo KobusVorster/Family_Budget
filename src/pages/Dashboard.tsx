@@ -71,47 +71,45 @@ export default function Dashboard() {
     <div className="rise">
       {data.settings.dataMode === 'sample' && (
         <Banner
-          title="These are starter numbers, not your real ones yet"
+          title={`${estimates} amounts are still guesses`}
           action={
             <Button variant="secondary" onClick={() => (window.location.hash = 'settings')}>
-              Review them
+              See the list
             </Button>
           }
         >
-          Everything the spreadsheet actually stated is carried over exactly — Liz’s income and
-          expense total, the SA rent, the loan balances, the R1,500-a-week Daddy payment. The{' '}
-          {estimates} lines it did not state are filled with placeholders. Editing anything
-          dismisses this notice.
+          They are marked <strong className="font-semibold text-ink">guess</strong> where they show
+          up. To fix one: open the page it is on, press Edit, type the real amount, press Save.
         </Banner>
       )}
 
       <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Card className="flex flex-col justify-between gap-6">
           <HeroFigure
-            label="Left over each month, whole household"
+            label="Left over each month"
             value={formatMoney(household.net, currency)}
             tone={netTone}
             caption={
               <>
-                {formatMoney(household.income, currency)} coming in against{' '}
-                {formatMoney(household.expenses, currency)} committed.{' '}
+                {formatMoney(household.income, currency)} in. {formatMoney(household.expenses, currency)}{' '}
+                out.{' '}
                 {household.net < 0
-                  ? 'The household spends more than it earns.'
+                  ? 'You spend more than you earn.'
                   : thinMargin
-                    ? 'That is under 5% of what comes in — a thin margin for anything unexpected.'
-                    : 'The household is covering itself.'}
+                    ? 'Not much spare.'
+                    : 'You have money spare.'}
               </>
             }
           />
           <dl className="grid grid-cols-2 gap-4 border-t border-hairline pt-4 text-sm">
             <div>
-              <dt className="text-ink-2">Shared costs</dt>
+              <dt className="text-ink-2">Shared bills</dt>
               <dd className="tnum mt-0.5 text-lg font-semibold">
                 {formatMoney(household.shared, currency)}
               </dd>
             </div>
             <div>
-              <dt className="text-ink-2">Still owed on debt</dt>
+              <dt className="text-ink-2">Debt left</dt>
               <dd className="tnum mt-0.5 text-lg font-semibold">
                 {formatMoney(debtTotal, currency)}
               </dd>
@@ -140,10 +138,10 @@ export default function Dashboard() {
                   <Meter
                     value={summary.committed}
                     tone={tone}
-                    label={`${summary.person.name}: ${formatPercent(summary.committed)} of income committed`}
+                    label={`Bills use ${formatPercent(summary.committed)} of what ${summary.person.name} earns`}
                   />
                   <p className="mt-1.5 text-xs text-muted">
-                    {formatPercent(summary.committed)} of income already committed
+                    Bills use {formatPercent(summary.committed)} of what {summary.person.name} earns
                   </p>
                 </div>
               </StatTile>
@@ -151,20 +149,20 @@ export default function Dashboard() {
           })}
 
           <StatTile
-            label="Shared, funded by Will"
+            label="Shared bills"
             accent={seriesColor(3)}
             value={formatMoney(household.shared, currency)}
-            detail="Rent, domestic help, internet, Daddy and Liz’s top-up"
+            detail="Rent, Maggie, internet, Daddy, Liz top-up"
           />
           <StatTile
-            label="Debt still to clear"
+            label="Debt left to pay"
             value={formatMoney(debtTotal, currency)}
             detail={
               nearestPayoff
-                ? `Next clear: ${nearestPayoff.debt.label}, ${new Date(
+                ? `${nearestPayoff.debt.label} is paid off first, ${new Date(
                     `${nearestPayoff.payoffDate}T00:00:00`,
                   ).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
-                : 'Nothing scheduled'
+                : 'No payment plan set'
             }
           />
         </div>
@@ -173,7 +171,7 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartFrame
           title="Where the money goes"
-          subtitle="Every active expense, normalised to a monthly figure."
+          subtitle="Every bill, as a monthly amount."
           table={
             <DataTable
               columns={['Category', 'Per month', 'Share']}
@@ -189,7 +187,7 @@ export default function Dashboard() {
             items={categories.map((slice) => ({
               label: slice.category,
               value: slice.amount,
-              meta: `${formatPercent(slice.share)} of everything`,
+              meta: `${formatPercent(slice.share)} of all spending`,
             }))}
             currency={currency}
           />
@@ -197,14 +195,14 @@ export default function Dashboard() {
 
         <div className="flex flex-col gap-4">
           <ChartFrame
-            title="Whose money is it"
-            subtitle="Personal spending against the shared South African household."
+            title="Who spends what"
+            subtitle="Own bills next to shared bills."
             table={
               <DataTable
-                columns={['Bucket', 'Per month']}
+                columns={['Who', 'Per month']}
                 rows={[
                   ...household.people.map((summary) => [
-                    `${summary.person.name} — personal`,
+                    `${summary.person.name} — own bills`,
                     formatMoney(summary.personal, currency),
                   ]),
                   ['Shared', formatMoney(household.shared, currency)],
@@ -216,18 +214,18 @@ export default function Dashboard() {
               currency={currency}
               slices={[
                 ...household.people.map((summary) => ({
-                  label: `${summary.person.name} — personal`,
+                  label: `${summary.person.name} — own bills`,
                   value: summary.personal,
                   color: seriesColor(summary.person.slot),
                 })),
-                { label: 'Shared household', value: household.shared, color: seriesColor(3) },
+                { label: 'Shared bills', value: household.shared, color: seriesColor(3) },
               ]}
             />
           </ChartFrame>
 
           <ChartFrame
-            title="Will’s gig income, by week"
-            subtitle="The daily DoorDash and Lyft log, rolled up. Daily is too noisy to read."
+            title="Will’s gig money, per week"
+            subtitle="DoorDash and Lyft added up week by week."
             legend={sources.map((source, index) => ({
               label: source,
               color: seriesColor(4 + index),
@@ -252,8 +250,8 @@ export default function Dashboard() {
 
       <Card className="mt-4">
         <CardHeader
-          title="Debt at a glance"
-          subtitle={`${activeDebts.length} still running of ${debts.length} tracked.`}
+          title="Debt"
+          subtitle={`${activeDebts.length} of ${debts.length} loans still to pay.`}
           action={
             <Button variant="ghost" onClick={() => (window.location.hash = 'debt')}>
               Open
@@ -261,7 +259,7 @@ export default function Dashboard() {
           }
         />
         {activeDebts.length === 0 ? (
-          <p className="text-sm text-ink-2">Everything tracked here is paid off.</p>
+          <p className="text-sm text-ink-2">All loans are paid off.</p>
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2">
             {activeDebts.map((summary) => {
@@ -280,13 +278,13 @@ export default function Dashboard() {
                   <Meter
                     value={summary.progress}
                     tone="good"
-                    label={`${summary.debt.label}: ${formatPercent(summary.progress)} repaid`}
+                    label={`${summary.debt.label}: ${formatPercent(summary.progress)} paid off`}
                   />
                   <p className="mt-1.5 text-xs text-muted">
-                    {formatPercent(summary.progress)} repaid ·{' '}
+                    {formatPercent(summary.progress)} paid off ·{' '}
                     {summary.monthsLeft > 0
                       ? `${summary.monthsLeft} payments to go`
-                      : 'no schedule set'}
+                      : 'no payment plan set'}
                   </p>
                 </li>
               );
@@ -298,7 +296,7 @@ export default function Dashboard() {
       <Card className="mt-4">
         <CardHeader
           title="This month"
-          subtitle="Tick expenses off as they clear, the way the spreadsheet’s month-end grid did."
+          subtitle="Tick off each bill when you pay it."
           action={
             <Button variant="ghost" onClick={() => (window.location.hash = 'checklist')}>
               Open
@@ -320,10 +318,10 @@ function MonthProgress({ month }: { month: string }) {
     <div>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <span className="text-sm text-ink-2">
-          {progress.paid} of {progress.total} ticked off
+          {progress.paid} of {progress.total} paid
         </span>
         <span className="tnum text-sm font-medium text-ink">
-          {formatMoney(progress.outstanding, conversion.target)} still to pay
+          {formatMoney(progress.outstanding, conversion.target)} left to pay
         </span>
       </div>
       <Meter value={fraction} tone={fraction >= 1 ? 'good' : 'warning'} label="Month progress" />

@@ -41,13 +41,12 @@ export default function Settings() {
     <div className="rise">
       <PageHeader
         title="Settings"
-        subtitle="The exchange rate, how numbers are shown, and where your data lives."
+        subtitle="The exchange rate, how numbers look, and your data."
       />
 
       {rateAge > 30 && (
         <Banner tone="warning" title={`The exchange rate is ${rateAge} days old`}>
-          Every cross-currency figure in the app runs through it. Worth a refresh before you make
-          decisions on these numbers.
+          Type today’s rate in the box below and press Update rate.
         </Banner>
       )}
 
@@ -55,10 +54,10 @@ export default function Settings() {
         <Card>
           <CardHeader
             title="Exchange rate"
-            subtitle="Entered by hand. The spreadsheet used a Google Sheets function that does nothing in Excel, so both its rate cells had been frozen at 16.4612 without saying so."
+            subtitle="Type in the rate yourself. Every dollar-to-rand amount in the app uses it."
           />
           <div className="flex flex-wrap items-end gap-3">
-            <Field label="Rand per US dollar">
+            <Field label="Rand for $1">
               {(id) => (
                 <NumberInput
                   id={id}
@@ -83,13 +82,13 @@ export default function Settings() {
 
           <dl className="mt-5 grid gap-3 border-t border-hairline pt-4 text-sm sm:grid-cols-2">
             <div>
-              <dt className="text-muted">In use now</dt>
+              <dt className="text-muted">Using now</dt>
               <dd className="tnum mt-0.5 font-medium">
                 $1 = R{data.settings.usdZarRate.toFixed(4)}
               </dd>
             </div>
             <div>
-              <dt className="text-muted">Set on</dt>
+              <dt className="text-muted">Last changed</dt>
               <dd className="mt-0.5 font-medium">
                 {new Date(`${data.settings.rateUpdatedAt}T00:00:00`).toLocaleDateString()}
                 <span className="ml-2 text-xs text-muted">
@@ -113,17 +112,16 @@ export default function Settings() {
 
           {data.settings.usdZarRate === SEED_USD_ZAR && (
             <p className="mt-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
-              This is still the rate the workbook was carrying. It has not been checked against a
-              live market.
+              You have not changed this rate yet. Look up today’s rate and type it in.
             </p>
           )}
         </Card>
 
         <Card>
-          <CardHeader title="Display" subtitle="How figures are shown across the app." />
+          <CardHeader title="Display" subtitle="How numbers look." />
           <div className="flex flex-col gap-5">
             <div>
-              <p className="mb-2 text-sm font-medium text-ink-2">Report totals in</p>
+              <p className="mb-2 text-sm font-medium text-ink-2">Show totals in</p>
               <SegmentedControl
                 label="Reporting currency"
                 value={data.settings.displayCurrency}
@@ -134,7 +132,7 @@ export default function Settings() {
                 ]}
               />
               <p className="mt-2 text-xs text-muted">
-                Individual lines always also show the currency they were entered in.
+                Each bill also shows the currency it was typed in.
               </p>
             </div>
 
@@ -145,7 +143,7 @@ export default function Settings() {
                 value={data.settings.theme}
                 onChange={(value) => updateSettings({ theme: value })}
                 options={[
-                  { value: 'system', label: 'Match device' },
+                  { value: 'system', label: 'Match my phone' },
                   { value: 'light', label: 'Light' },
                   { value: 'dark', label: 'Dark' },
                 ]}
@@ -171,31 +169,40 @@ export default function Settings() {
 
       <Card className="mt-4">
         <CardHeader
-          title="Numbers still to check"
-          subtitle="Lines the app filled in with a placeholder because the spreadsheet summary named them without giving an amount. Editing one clears it from this list."
+          title="Amounts to fix"
+          subtitle="These amounts are guesses. Each one shows the page it is on."
           action={
             <Badge tone={reviews.length > 0 ? 'warning' : 'good'}>
-              {reviews.length === 0 ? 'All checked' : `${reviews.length} to check`}
+              {reviews.length === 0 ? 'All done' : `${reviews.length} left`}
             </Badge>
           }
         />
         {reviews.length === 0 ? (
-          <p className="text-sm text-ink-2">
-            Every figure in the app has been entered or confirmed by hand.
-          </p>
+          <p className="text-sm text-ink-2">Nothing to fix. Every amount has been typed in.</p>
         ) : (
           <>
-            <p className="mb-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
-              Liz’s 22 personal lines are individually estimated but add up to exactly R34,323.09 —
-              the total her sheet does pin down. Correcting them moves money between categories
-              without changing the household bottom line.
-            </p>
-            <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+            <ol className="mb-5 flex flex-col gap-1.5 rounded-lg bg-sunken p-4 text-sm text-ink-2">
+              <li>1. Open the page shown next to the item.</li>
+              <li>2. Find it in the list and press Edit.</li>
+              <li>3. Type the real amount and press Save.</li>
+            </ol>
+            <ul className="flex flex-col">
               {reviews.map((item) => (
-                <li key={item.id} className="flex items-center gap-3 text-sm">
-                  <span className="w-16 shrink-0 text-xs text-muted">{item.kind}</span>
-                  <span className="min-w-0 flex-1 truncate text-ink">{item.label}</span>
-                  <span className="shrink-0 text-xs text-muted">{item.detail}</span>
+                <li
+                  key={item.id}
+                  className="flex items-center gap-3 border-b border-hairline py-2.5 last:border-0"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{item.label}</span>
+                  <span className="hidden shrink-0 text-xs text-muted sm:block">{item.who}</span>
+                  <span className="tnum shrink-0 text-sm text-ink-2">
+                    {formatMoney(item.amount, item.currency)}
+                  </span>
+                  <a
+                    href={`#${item.page}`}
+                    className="shrink-0 rounded-lg border border-hairline px-2.5 py-1 text-xs font-medium text-ink-2 transition hover:bg-sunken hover:text-ink"
+                  >
+                    {item.pageName}
+                  </a>
                 </li>
               ))}
             </ul>
@@ -206,27 +213,27 @@ export default function Settings() {
       <Card className="mt-4">
         <CardHeader
           title="Your data"
-          subtitle="Everything is stored in this browser and nowhere else. Export a file to move it to another device or share it."
+          subtitle="Your data is saved in this browser only. Nothing is sent anywhere."
         />
 
         <div className="mb-5 grid gap-4 sm:grid-cols-4">
-          <StatTile label="Income lines" value={String(data.income.length)} />
-          <StatTile label="Expenses" value={String(data.expenses.length)} />
-          <StatTile label="Debts" value={String(data.debts.length)} />
-          <StatTile label="Ledger entries" value={String(data.ledger.length)} />
+          <StatTile label="Money in" value={String(data.income.length)} />
+          <StatTile label="Bills" value={String(data.expenses.length)} />
+          <StatTile label="Loans" value={String(data.debts.length)} />
+          <StatTile label="Daily earnings" value={String(data.ledger.length)} />
         </div>
 
         {importError && (
-          <Banner tone="critical" title="That import did not work">
+          <Banner tone="critical" title="That file did not work">
             {importError}
           </Banner>
         )}
 
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" onClick={() => exportFile(data)}>
-            Export a backup
+            Save a copy
           </Button>
-          <Button onClick={() => fileInput.current?.click()}>Import a backup</Button>
+          <Button onClick={() => fileInput.current?.click()}>Open a saved copy</Button>
           <input
             ref={fileInput}
             type="file"
@@ -240,7 +247,7 @@ export default function Settings() {
                 replaceAll(await importFile(file));
               } catch (error) {
                 setImportError(
-                  error instanceof Error ? error.message : 'The file could not be read.',
+                  error instanceof Error ? error.message : 'The file could not be read. Pick a file you saved from this app.',
                 );
               } finally {
                 event.target.value = '';
@@ -252,76 +259,37 @@ export default function Settings() {
             onClick={() => {
               if (
                 window.confirm(
-                  'Replace everything with the starter numbers from the spreadsheet? Your current data will be lost.',
+                  'Put back the numbers this app started with? Everything you have typed will be lost.',
                 )
               ) {
                 resetToSeed();
               }
             }}
           >
-            Reset to starter numbers
+            Start over
           </Button>
           <Button
             variant="danger"
             onClick={() => {
               if (
                 window.confirm(
-                  'Delete all income, expenses, debts and ledger entries? This cannot be undone.',
+                  'Delete everything and start with a blank budget? This cannot be undone.',
                 )
               ) {
                 clearAll();
               }
             }}
           >
-            Start empty
+            Delete everything
           </Button>
         </div>
 
         <p className="mt-4 text-xs text-muted">
-          Two people on two continents cannot both edit one browser’s storage. To stay in sync,
-          whoever makes changes exports a backup and sends the file over; the other imports it.
+          You and Liz cannot both edit the same copy. To share changes: press Save a copy, send
+          the file to her, and she presses Open a saved copy.
         </p>
       </Card>
 
-      <Card className="mt-4">
-        <CardHeader
-          title="What came across from the spreadsheet"
-          subtitle="And what the app does differently."
-        />
-        <ul className="flex flex-col gap-3 text-sm text-ink-2">
-          {[
-            [
-              'The income link that had broken',
-              'Will’s bottom line pulled his DoorDash and Lyft totals from the daily sheet, but those cells had gone to #REF!. The daily log now feeds the totals directly.',
-            ],
-            [
-              'The exchange rate',
-              'Two separate cells each called GOOGLEFINANCE, which Excel does not have, so both silently fell back to 16.4612. There is now one rate, entered by hand, with the date it was set.',
-            ],
-            [
-              'The consolidated work loan',
-              'The second loan’s balance hardcoded 15,000 instead of pointing at the first loan’s remaining balance. It is a live link now, so paying down the first moves the second.',
-            ],
-            [
-              'Liz’s shortfall',
-              'Row 13 added a negative number where it meant to subtract one, which understated what Will needed to send. Covering the shortfall is counted as a cost here.',
-            ],
-            [
-              'Weekly bills',
-              'The sheet multiplied weekly amounts by 4. A month averages 4.33 weeks, so every weekly line was under-counted by about 8% — roughly a month of that spend a year.',
-            ],
-            [
-              'The month-end grid',
-              'Seven columns of TRUE and FALSE became the Monthly check page, which works for any month rather than just January to July.',
-            ],
-          ].map(([title, body]) => (
-            <li key={title} className="border-b border-hairline pb-3 last:border-0 last:pb-0">
-              <p className="font-medium text-ink">{title}</p>
-              <p className="mt-0.5">{body}</p>
-            </li>
-          ))}
-        </ul>
-      </Card>
     </div>
   );
 }

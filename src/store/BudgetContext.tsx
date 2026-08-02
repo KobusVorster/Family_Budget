@@ -61,7 +61,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<BudgetData>(() => loadData());
 
   // Persist on every change, one frame behind the render so typing in a field
-  // never blocks on serialising the whole workbook.
+  // never blocks on serialising the whole budget.
   const saveTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     window.clearTimeout(saveTimer.current);

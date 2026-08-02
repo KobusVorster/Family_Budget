@@ -9,37 +9,29 @@ import type {
 } from '../types';
 
 /* ---------------------------------------------------------------------------
-   Seed data carried over from the "Family Budget" workbook.
+   The numbers the app ships with.
 
-   Two kinds of number live in here and the difference matters:
+   This app is the record now. These values are only a starting point, kept here
+   so a fresh install and the "Start over" button have something to load.
 
-   `verified: true`  — the figure appeared in the spreadsheet, or falls straight
-                       out of one of its formulas. Liz's monthly expense total,
-                       for instance, is not written anywhere in the sheet, but
-                       `SA!C7 = B2 - B7` reports a shortfall of -2,369.09
-                       against income of 31,954, which pins the total at
-                       34,323.09 exactly.
+   `verified: true`  — a real figure someone gave us.
+   `verified: false` — a guess. The app marks these "guess" wherever they show
+                       and lists them on the Settings page until someone types
+                       the real amount in.
 
-   `verified: false` — a placeholder. The workbook summary gave the *names* of
-                       these lines but not their amounts, so they are filled
-                       with plausible values and flagged. The app shows a
-                       running count of them and the Review page lists every
-                       one, so they can be corrected against the real sheet.
-
-   Liz's 22 individual expense lines are estimates, but they are chosen to sum
-   to exactly 34,323.09 — the total the workbook does pin down. Correcting the
-   individual lines therefore only ever moves money between categories; the
-   household bottom line stays right in the meantime.
+   Liz's 22 personal bills are each a guess, but together they add up to exactly
+   34,323.09, which is a real total. So fixing them one at a time only moves
+   money between groups — the bottom line stays right the whole way through.
 --------------------------------------------------------------------------- */
 
-/** The workbook's frozen fallback rate. Both sheets used a GOOGLEFINANCE call
- *  that does not exist in Excel, so both had silently sat on this number. */
+/** Starting exchange rate. Not a live figure — the Settings page nags until
+ *  someone sets a real one. */
 export const SEED_USD_ZAR = 16.4612;
 
-/** SA!E2 — the full monthly rent on the South African house. */
+/** The full monthly rent on the South African house. */
 export const SA_TOTAL_RENT = 14373;
 
-/** SA!C7 — income minus expenses on Liz's side, which Will covers. */
+/** What Liz is short each month, which Will covers. */
 export const LIZ_MONTHLY_SHORTFALL = 2369.09;
 
 const WILL = 'will';
@@ -108,7 +100,6 @@ function seedIncome(): IncomeSource[] {
       kind: 'salary',
       active: true,
       verified: true,
-      note: 'SA!B3',
     },
     {
       id: 'inc-liz-support',
@@ -120,7 +111,6 @@ function seedIncome(): IncomeSource[] {
       kind: 'support',
       active: true,
       verified: true,
-      note: 'SA!B4',
     },
     {
       id: 'inc-will-doordash',
@@ -132,7 +122,7 @@ function seedIncome(): IncomeSource[] {
       kind: 'gig',
       active: true,
       verified: false,
-      note: 'Monthly average — the day-by-day figures live in the Income ledger.',
+      note: 'Monthly average. Day-by-day amounts are in the daily earnings list.',
     },
     {
       id: 'inc-will-lyft',
@@ -162,7 +152,7 @@ function seedIncome(): IncomeSource[] {
 
 /* -- expenses ------------------------------------------------------------- */
 
-/** Liz's 22 personal lines. Individually estimated; collectively exact. */
+/** Liz's 22 personal bills. Each one a guess; the total is real. */
 const LIZ_LINES: Array<[string, Expense['category'], number]> = [
   ['Rent — Liz’s share', 'Housing', 4500],
   ['Car loan', 'Transport', 3900],
@@ -188,8 +178,7 @@ const LIZ_LINES: Array<[string, Expense['category'], number]> = [
   ['Bank charges', 'Utilities', 168.09],
 ];
 
-/** Will's US lines. All estimated — the workbook summary named the rows but
- *  carried no amounts through. */
+/** Will's US bills. Every amount is a guess. */
 const WILL_LINES: Array<[string, Expense['category'], number, Expense['frequency'], string]> = [
   ['Rent', 'Housing', 1250, 'monthly', 'Checking'],
   ['Car loan', 'Transport', 420, 'monthly', 'Chase Auto'],
@@ -240,9 +229,7 @@ function seedExpenses(): Expense[] {
     });
   });
 
-  /* The shared block — the South African household costs Will funds from the
-     US. In the workbook these were the three cross-sheet links on "Will Debt
-     and Expenses" rows 11-13 plus the weekly Daddy payment. */
+  /* The shared bills — South African household costs Will pays from the US. */
   const shared: Expense[] = [
     {
       id: 'exp-shared-rent',
@@ -256,7 +243,7 @@ function seedExpenses(): Expense[] {
       split: { [WILL]: 1, [LIZ]: 0 },
       active: true,
       verified: false,
-      note: `Total SA rent is R${SA_TOTAL_RENT.toLocaleString('en-US')} (verified). This is the part left after Daddy’s contribution — set that on the Shared page.`,
+      note: 'Set the full rent and Daddy’s share on the Shared page.',
     },
     {
       id: 'exp-shared-domestic',
@@ -270,7 +257,6 @@ function seedExpenses(): Expense[] {
       split: { [WILL]: 1, [LIZ]: 0 },
       active: true,
       verified: false,
-      note: 'SA!B10',
     },
     {
       id: 'exp-shared-internet',
@@ -284,7 +270,6 @@ function seedExpenses(): Expense[] {
       split: { [WILL]: 1, [LIZ]: 0 },
       active: true,
       verified: false,
-      note: 'SA!B11',
     },
     {
       id: 'exp-shared-daddy',
@@ -298,7 +283,7 @@ function seedExpenses(): Expense[] {
       split: { [WILL]: 1, [LIZ]: 0 },
       active: true,
       verified: true,
-      note: 'R1,500 a week — "Will Debt and Expenses"!C12',
+      note: 'R1,500 a week.',
     },
     {
       id: 'exp-shared-topup',
@@ -312,7 +297,7 @@ function seedExpenses(): Expense[] {
       split: { [WILL]: 1, [LIZ]: 0 },
       active: true,
       verified: true,
-      note: 'SA!C7 — what Liz is short each month once her own expenses are paid.',
+      note: 'What Liz is short each month once her own bills are paid.',
     },
   ];
 
@@ -353,7 +338,7 @@ function seedDebts(today: Date): Debt[] {
     principal: 13070,
     payments: schedule('pay-fanus', fanusStart, 5, () => 2614, today),
     verified: true,
-    note: 'Total borrowed is from the sheet; the five repayment dates are estimated.',
+    note: 'The five payment dates are a guess.',
   };
 
   /* Work loan 1 — R37,500 borrowed, R15,000 still outstanding when loan 2
@@ -368,12 +353,12 @@ function seedDebts(today: Date): Debt[] {
     principal: 37500,
     payments: schedule('pay-job1', job1Start, 9, () => 2500, today),
     verified: true,
-    note: 'R15,000 was still outstanding when the second work loan absorbed it.',
+    note: 'R15,000 was still owed when the current work loan paid it off.',
   };
 
-  /* Work loan 2 — R230,000 borrowed, R15,000 of which cleared loan 1, over 33
-     monthly instalments. The workbook hardcoded that 15,000; here it is a live
-     link to loan 1's remaining balance. */
+  /* Work loan 2 — R230,000 borrowed, R15,000 of which paid off loan 1, over 33
+     monthly payments. The offset tracks loan 1's balance rather than being a
+     fixed number, so the two can never disagree. */
   const job2Start = addMonths(today, -6);
   const job2: Debt = {
     id: 'debt-job-2',
@@ -395,8 +380,7 @@ function seedDebts(today: Date): Debt[] {
     verified: true,
   };
 
-  /* UR shares payback — standalone ledger in the workbook, no links either
-     way. */
+  /* UR shares payback — stands on its own, nothing else feeds into it. */
   const urStart = addMonths(today, -13);
   const ur: Debt = {
     id: 'debt-ur-shares',
@@ -407,7 +391,7 @@ function seedDebts(today: Date): Debt[] {
     principal: 130208,
     payments: schedule('pay-ur', urStart, 14, (index) => (index % 4 === 3 ? 6000 : 3500), today),
     verified: true,
-    note: 'Total outstanding is from the sheet; individual payment amounts are estimated.',
+    note: 'The payment amounts are a guess.',
   };
 
   const carStart = addMonths(today, -20);
@@ -518,7 +502,7 @@ export function createSeedData(now: Date = new Date()): BudgetData {
   };
 }
 
-/** A cleared-out workbook: the people, the rate and nothing else. */
+/** A blank budget: the people, the rate and nothing else. */
 export function createEmptyData(now: Date = new Date()): BudgetData {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return {

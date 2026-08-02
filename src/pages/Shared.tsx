@@ -4,7 +4,6 @@ import { activeExpenses, monthlyValue, settleShared, shareFor } from '../lib/cal
 import { FREQUENCY_LABEL, convert, formatMoney, formatPercent } from '../lib/money';
 import { seriesColor } from '../lib/palette';
 import {
-  Banner,
   Button,
   Card,
   CardHeader,
@@ -30,8 +29,7 @@ export default function Shared() {
   const total = shared.reduce((sum, expense) => sum + monthlyValue(expense, conversion), 0);
 
   /* What actually leaves the US each month for South Africa: the shared lines
-     Will pays that are denominated in rand. This is the number the workbook was
-     reaching for with its three cross-sheet links. */
+     Will pays that are priced in rand. */
   const sentToSA = shared
     .filter((expense) => expense.paidBy === 'will' && expense.currency === 'ZAR')
     .reduce((sum, expense) => sum + monthlyValue(expense, conversion), 0);
@@ -44,9 +42,8 @@ export default function Shared() {
     const nextTotal = patch.saTotalRent ?? saTotalRent;
     const nextDaddy = patch.saRentFromDaddy ?? saRentFromDaddy;
     updateSettings(patch);
-    // Keep the shared rent line in step rather than making someone remember to
-    // retype it — the workbook's habit of hardcoding a figure that should have
-    // been a reference is exactly what drifted out of sync.
+    // Keep the shared rent bill in step automatically, so the total and Daddy's
+    // share can never disagree with what Will is recorded as paying.
     if (data.expenses.some((expense) => expense.id === saRentExpenseId)) {
       updateExpense(saRentExpenseId, { amount: Math.max(0, nextTotal - nextDaddy), verified: true });
     }
@@ -56,13 +53,13 @@ export default function Shared() {
     <div className="rise">
       <PageHeader
         title="Shared"
-        subtitle="The South African household costs the two of you carry together — what each of you owes, and what actually moves between accounts."
+        subtitle="Bills for the South African house that you both share. This page works out who owes who."
       />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Card className="flex flex-col justify-between gap-6">
           <HeroFigure
-            label="Shared costs, per month"
+            label="Shared bills, per month"
             value={formatMoney(total, currency)}
             caption={
               settlement.transfer ? (
@@ -71,15 +68,15 @@ export default function Shared() {
                     {settlement.transfer.from.name} owes {settlement.transfer.to.name}{' '}
                     {formatMoney(settlement.transfer.amount, currency)}
                   </strong>{' '}
-                  a month to square this up.
+                  a month.
                 </>
               ) : (
-                'Everyone is paying exactly what they agreed to carry — nothing to settle.'
+                'Nobody owes anybody. Each of you pays your own share.'
               )
             }
           />
           <div className="border-t border-hairline pt-4">
-            <p className="text-sm text-ink-2">Leaving the US for South Africa each month</p>
+            <p className="text-sm text-ink-2">Sent to South Africa each month</p>
             <p className="tnum mt-0.5 text-lg font-semibold">
               {formatMoney(sentToSA, currency)}
               {currency !== 'ZAR' && (
@@ -95,18 +92,18 @@ export default function Shared() {
           {settlement.lines.map((line) => (
             <StatTile
               key={line.person.id}
-              label={line.person.fullName}
+              label={line.person.name}
               accent={seriesColor(line.person.slot)}
               value={formatMoney(line.paid, currency)}
               detail={
                 <>
-                  paid · carries {formatMoney(line.owes, currency)}
+                  pays · should pay {formatMoney(line.owes, currency)}
                   <br />
                   {Math.abs(line.balance) < 0.01
-                    ? 'square'
+                    ? 'All square'
                     : line.balance > 0
-                      ? `owed ${formatMoney(line.balance, currency)}`
-                      : `owes ${formatMoney(-line.balance, currency)}`}
+                      ? `Is owed ${formatMoney(line.balance, currency)}`
+                      : `Owes ${formatMoney(-line.balance, currency)}`}
                 </>
               }
               tone={line.balance > 0.01 ? 'good' : undefined}
@@ -115,25 +112,14 @@ export default function Shared() {
         </div>
       </div>
 
-      <Banner tone="good" title="One thing the spreadsheet had backwards">
-        On “Will Debt and Expenses”, row 13 <em>added</em> Liz’s shortfall (<code>SA!C7</code>) to
-        Will’s costs. That cell holds a negative number, so adding it quietly subtracted about{' '}
-        {formatMoney(
-          convert(2369.09, 'ZAR', currency, data.settings.usdZarRate),
-          currency,
-        )}{' '}
-        a month from what Will was budgeting to send. Here, covering the shortfall is counted as a
-        cost, which is what it is.
-      </Banner>
-
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader
             title="South African rent"
-            subtitle="Set the total and Daddy’s share; Will’s portion follows automatically."
+            subtitle="Type the full rent and what Daddy pays. Will’s share works itself out."
           />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Total monthly rent (ZAR)">
+            <Field label="Full rent each month (R)">
               {(id) => (
                 <NumberInput
                   id={id}
@@ -143,7 +129,7 @@ export default function Shared() {
                 />
               )}
             </Field>
-            <Field label="Daddy’s contribution (ZAR)">
+            <Field label="What Daddy pays (R)">
               {(id) => (
                 <NumberInput
                   id={id}
@@ -167,7 +153,7 @@ export default function Shared() {
           </div>
 
           <p className="mt-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
-            Will’s portion is{' '}
+            Will pays{' '}
             <strong className="tnum font-semibold text-ink">
               {formatMoney(willRentPortion, 'ZAR')}
             </strong>{' '}
@@ -178,16 +164,16 @@ export default function Shared() {
                 'USD',
               )}
             </strong>{' '}
-            at the current rate.
+            each month.
           </p>
         </Card>
 
         <ChartFrame
-          title="Who carries what"
-          subtitle="The agreed split of the shared block, before anyone pays anything."
+          title="Who should pay what"
+          subtitle="Each person’s share of the shared bills."
           table={
             <DataTable
-              columns={['Person', 'Carries', 'Pays', 'Balance']}
+              columns={['Person', 'Should pay', 'Pays', 'Difference']}
               rows={settlement.lines.map((line) => [
                 line.person.fullName,
                 formatMoney(line.owes, currency),
@@ -200,7 +186,7 @@ export default function Shared() {
           <ShareBar
             currency={currency}
             slices={settlement.lines.map((line) => ({
-              label: `${line.person.name} carries`,
+              label: `${line.person.name}’s share`,
               value: line.owes,
               color: seriesColor(line.person.slot),
             }))}
@@ -211,18 +197,18 @@ export default function Shared() {
       <Card padded={false}>
         <CardHeader
           inset
-          title="Shared expenses"
-          subtitle={`${shared.length} line${shared.length === 1 ? '' : 's'} · ${formatMoney(total, currency)} a month`}
+          title="Shared bills"
+          subtitle={`${shared.length} bill${shared.length === 1 ? '' : 's'} · ${formatMoney(total, currency)} a month`}
           action={
             <Button variant="ghost" onClick={() => (window.location.hash = 'expenses')}>
-              Edit in Expenses
+              Edit these
             </Button>
           }
         />
         {shared.length === 0 ? (
           <EmptyState
-            title="Nothing shared yet"
-            body="Mark an expense as shared on the Expenses page and it will show up here with its split."
+            title="No shared bills yet"
+            body="On the Money out page, set a bill’s owner to Shared and it will show up here."
           />
         ) : (
           <ul className="flex flex-col">
@@ -257,7 +243,7 @@ export default function Shared() {
                             className="h-2 w-2 rounded-full"
                             style={{ background: seriesColor(person.slot) }}
                           />
-                          {person.name} carries {formatPercent(share)} ·{' '}
+                          {person.name} pays {formatPercent(share)} ·{' '}
                           <span className="tnum">
                             {formatMoney(monthlyValue(expense, conversion) * share, currency)}
                           </span>

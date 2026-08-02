@@ -54,7 +54,7 @@ export default function Debts() {
     <div className="rise">
       <PageHeader
         title="Debt"
-        subtitle="Every loan and card, what is left on it, and when the schedule clears it."
+        subtitle="Every loan and card, how much is left, and when it will be paid off."
         action={
           <Button
             variant="primary"
@@ -71,32 +71,32 @@ export default function Debts() {
               })
             }
           >
-            <IconPlus /> Add debt
+            <IconPlus /> Add a loan
           </Button>
         }
       />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <SegmentedControl
-          label="Whose debt"
+          label="Whose loan"
           value={scope}
           onChange={setScope}
           options={[
-            { value: 'all', label: 'Everyone' },
+            { value: 'all', label: 'Both' },
             ...data.people.map((person) => ({ value: person.id, label: person.name })),
           ]}
         />
       </div>
 
       <div className="mb-4 grid gap-4 sm:grid-cols-3">
-        <StatTile label="Still owed" value={formatMoney(remaining, currency)} />
+        <StatTile label="Left to pay" value={formatMoney(remaining, currency)} />
         <StatTile
-          label="Loans running"
+          label="Loans still open"
           value={String(active.length)}
-          detail={cleared.length > 0 ? `${cleared.length} cleared` : undefined}
+          detail={cleared.length > 0 ? `${cleared.length} paid off` : undefined}
         />
         <StatTile
-          label="Next payment due"
+          label="Next payment"
           value={nextDue ? formatMoney(nextDue.nextPayment!.amount, nextDue.debt.currency) : '—'}
           detail={
             nextDue ? `${nextDue.debt.label} · ${formatDate(nextDue.nextPayment!.date)}` : undefined
@@ -108,10 +108,10 @@ export default function Debts() {
         <div className="mb-4">
           <ChartFrame
             title="What is left, biggest first"
-            subtitle="Converted to your reporting currency so a rand loan and a dollar card can be compared."
+            subtitle="All in one currency so you can compare them."
             table={
               <DataTable
-                columns={['Debt', 'Remaining', 'Repaid']}
+                columns={['Loan', 'Left to pay', 'Paid off']}
                 rows={active.map((summary) => [
                   summary.debt.label,
                   formatMoney(summary.remaining, summary.debt.currency),
@@ -130,10 +130,10 @@ export default function Debts() {
                     : summary.debt.currency === 'USD'
                       ? summary.remaining * data.settings.usdZarRate
                       : summary.remaining / data.settings.usdZarRate,
-                meta: `${formatPercent(summary.progress)} repaid · ${formatMoney(
+                meta: `${formatPercent(summary.progress)} paid off · ${formatMoney(
                   summary.remaining,
                   summary.debt.currency,
-                )} in ${summary.debt.currency}`,
+                )} left`,
               }))}
             />
           </ChartFrame>
@@ -143,8 +143,8 @@ export default function Debts() {
       {summaries.length === 0 ? (
         <Card>
           <EmptyState
-            title="No debts tracked here"
-            body="Add a loan or a card and the app will chart the payoff for you."
+            title="No loans here"
+            body="Press \u201cAdd a loan\u201d to put one in."
           />
         </Card>
       ) : (
@@ -213,22 +213,22 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
               {!debt.verified && <EstimateMark />}
             </h2>
             <p className="mt-1 text-sm text-ink-2">
-              {person?.fullName} · {debt.lender || 'no lender set'}
-              {cleared && ' · cleared'}
+              {person?.name} · {debt.lender || 'no lender set'}
+              {cleared && ' · paid off'}
             </p>
           </div>
           <div className="text-right">
             <p className="tnum text-xl font-semibold">
               {formatMoney(summary.remaining, debt.currency)}
             </p>
-            <p className="text-xs text-muted">still owed</p>
+            <p className="text-xs text-muted">left to pay</p>
           </div>
         </header>
 
         <Meter
           value={summary.progress}
           tone={cleared ? 'good' : 'good'}
-          label={`${debt.label}: ${formatPercent(summary.progress)} repaid`}
+          label={`${debt.label}: ${formatPercent(summary.progress)} paid off`}
         />
 
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
@@ -238,14 +238,14 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
           </div>
           {summary.offset > 0 && (
             <div>
-              <dt className="text-muted">Cleared an older loan</dt>
+              <dt className="text-muted">Paid off an older loan</dt>
               <dd className="tnum mt-0.5 font-medium">
                 {formatMoney(summary.offset, debt.currency)}
               </dd>
             </div>
           )}
           <div>
-            <dt className="text-muted">Repaid</dt>
+            <dt className="text-muted">Paid so far</dt>
             <dd className="tnum mt-0.5 font-medium">{formatMoney(summary.paid, debt.currency)}</dd>
           </div>
           <div>
@@ -253,7 +253,7 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
             <dd className="tnum mt-0.5 font-medium">{summary.monthsLeft || '—'}</dd>
           </div>
           <div>
-            <dt className="text-muted">Clears</dt>
+            <dt className="text-muted">Paid off on</dt>
             <dd className="mt-0.5 font-medium">
               {summary.payoffDate ? formatDate(summary.payoffDate) : '—'}
             </dd>
@@ -262,21 +262,20 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
 
         {summary.offset > 0 && (
           <p className="mt-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
-            {formatMoney(debt.principal, debt.currency)} was borrowed, but{' '}
-            {formatMoney(summary.offset, debt.currency)} of it went straight to clearing the earlier
-            loan — so the balance that actually had to be repaid opened at{' '}
+            {formatMoney(debt.principal, debt.currency)} was borrowed.{' '}
+            {formatMoney(summary.offset, debt.currency)} of it paid off the older loan, so only{' '}
             <strong className="tnum font-semibold text-ink">
               {formatMoney(summary.opening, debt.currency)}
-            </strong>
-            . That figure tracks the older loan live rather than being typed in once.
+            </strong>{' '}
+            has to be paid back. This updates by itself as the older loan goes down.
           </p>
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">
           <Button onClick={() => setOpen(!open)} aria-expanded={open}>
-            {open ? 'Hide schedule' : `Schedule (${debt.payments.length})`}
+            {open ? 'Hide payments' : `Payments (${debt.payments.length})`}
           </Button>
-          <Button onClick={() => setAdding(true)}>Log a payment</Button>
+          <Button onClick={() => setAdding(true)}>Add a payment</Button>
           <Button variant="ghost" onClick={() => onEdit(debt)}>
             Edit
           </Button>
@@ -284,7 +283,7 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
             variant="ghost"
             className="ml-auto"
             onClick={() => {
-              if (window.confirm(`Delete "${debt.label}" and its payment history?`)) {
+              if (window.confirm(`Delete "${debt.label}" and all its payments? This cannot be undone.`)) {
                 removeDebt(debt.id);
               }
             }}
@@ -298,8 +297,8 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
         <div className="border-t border-hairline">
           {debt.payments.length === 0 ? (
             <EmptyState
-              title="No schedule yet"
-              body="Log a payment, or set up a repayment plan, and the payoff date appears above."
+              title="No payments yet"
+              body="Press \u201cAdd a payment\u201d, or press Edit to set up a monthly payment plan."
             />
           ) : (
             <ul className="max-h-80 overflow-y-auto">
@@ -332,7 +331,7 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
       <Modal
         open={adding}
         onClose={() => setAdding(false)}
-        title={`Log a payment — ${debt.label}`}
+        title={`Add a payment — ${debt.label}`}
         footer={
           <>
             <Button onClick={() => setAdding(false)}>Cancel</Button>
@@ -420,7 +419,7 @@ function DebtEditor({
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Add debt' : 'Edit debt'}
+      title={isNew ? 'Add a loan' : 'Edit loan'}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -463,7 +462,7 @@ function DebtEditor({
               </Select>
             )}
           </Field>
-          <Field label="Lender">
+          <Field label="Who lent it">
             {(id) => (
               <TextInput
                 id={id}
@@ -503,8 +502,8 @@ function DebtEditor({
         </div>
 
         <Field
-          label="Consolidated an older loan"
-          hint="If part of this loan went to paying off another one, pick it here. The opening balance then follows that loan instead of being typed in."
+          label="Did this loan pay off another loan?"
+          hint="Pick the older loan and the amount left to pay updates by itself."
         >
           {(id) => (
             <Select
@@ -514,7 +513,7 @@ function DebtEditor({
                 setDraft({ ...draft, offsetFromDebtId: event.target.value || undefined })
               }
             >
-              <option value="">Nothing — this is all new borrowing</option>
+              <option value="">No, this is all new borrowing</option>
               {data.debts
                 .filter((item) => item.id !== draft.id)
                 .map((item) => (
@@ -528,14 +527,13 @@ function DebtEditor({
 
         <fieldset className="rounded-lg border border-hairline p-4">
           <legend className="px-1 text-sm font-medium text-ink">
-            Repayment plan (optional)
+            Monthly payment plan (optional)
           </legend>
           <p className="mb-3 text-xs text-muted">
-            Lays down monthly instalments in one go. Anything dated in the past is marked as
-            already paid.
+            Sets up all the payments at once. Any dated before today is ticked as paid.
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="First payment">
+            <Field label="First payment on">
               {(id) => (
                 <TextInput
                   id={id}
@@ -545,7 +543,7 @@ function DebtEditor({
                 />
               )}
             </Field>
-            <Field label="Amount each">
+            <Field label="Amount each time">
               {(id) => (
                 <NumberInput
                   id={id}
@@ -555,7 +553,7 @@ function DebtEditor({
                 />
               )}
             </Field>
-            <Field label="How many">
+            <Field label="How many payments">
               {(id) => (
                 <NumberInput
                   id={id}
