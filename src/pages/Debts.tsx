@@ -15,6 +15,7 @@ import {
   Field,
   Meter,
   Modal,
+  MoneyInput,
   NumberInput,
   PageHeader,
   SegmentedControl,
@@ -24,6 +25,97 @@ import {
 } from '../components/ui';
 import { ChartFrame, DataTable, RankedBars } from '../components/charts';
 import { IconPlus } from '../components/icons';
+
+/* -- repayment schedules --------------------------------------------------- */
+
+type Every = 'once' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom';
+type CustomUnit = 'days' | 'weeks' | 'months';
+
+const EVERY_LABEL: Record<Every, string> = {
+  once: 'Once off',
+  daily: 'Every day',
+  weekly: 'Every week',
+  biweekly: 'Every 2 weeks',
+  monthly: 'Every month',
+  quarterly: 'Every 3 months',
+  custom: 'Something else',
+};
+
+const EVERY_OPTIONS: Every[] = [
+  'monthly',
+  'weekly',
+  'biweekly',
+  'daily',
+  'quarterly',
+  'once',
+  'custom',
+];
+
+/** Turn "R5,000 every 2 weeks, 12 times, starting the 3rd" into dated lines.
+ *
+ *  Day and week steps add days, so they land on the same weekday every time.
+ *  Month steps move the month and keep the day of the month, clamping to the
+ *  last day so the 31st does not skip February. */
+export function buildSchedule(options: {
+  start: string;
+  count: number;
+  amount: number;
+  every: Every;
+  customN: number;
+  customUnit: CustomUnit;
+  today?: Date;
+}): DebtPayment[] {
+  const { start, amount, every, customN, customUnit } = options;
+  const today = options.today ?? new Date();
+  const first = new Date(`${start}T00:00:00`);
+  if (Number.isNaN(first.getTime()) || !(amount > 0)) return [];
+
+  const count = every === 'once' ? 1 : Math.max(1, Math.min(500, Math.round(options.count)));
+  const step: { days: number; months: number } =
+    every === 'daily'
+      ? { days: 1, months: 0 }
+      : every === 'weekly'
+        ? { days: 7, months: 0 }
+        : every === 'biweekly'
+          ? { days: 14, months: 0 }
+          : every === 'monthly'
+            ? { days: 0, months: 1 }
+            : every === 'quarterly'
+              ? { days: 0, months: 3 }
+              : every === 'custom'
+                ? customUnit === 'days'
+                  ? { days: Math.max(1, customN), months: 0 }
+                  : customUnit === 'weeks'
+                    ? { days: Math.max(1, customN) * 7, months: 0 }
+                    : { days: 0, months: Math.max(1, customN) }
+                : { days: 0, months: 0 };
+
+  const payments: DebtPayment[] = [];
+  const dayOfMonth = first.getDate();
+
+  for (let index = 0; index < count; index += 1) {
+    let date: Date;
+    if (step.months > 0) {
+      date = new Date(first.getFullYear(), first.getMonth() + step.months * index, 1);
+      const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+      date.setDate(Math.min(dayOfMonth, lastDay));
+    } else {
+      date = new Date(first);
+      date.setDate(date.getDate() + step.days * index);
+    }
+
+    payments.push({
+      id: newId('pay'),
+      date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+        date.getDate(),
+      ).padStart(2, '0')}`,
+      amount,
+      paid: date <= today,
+    });
+  }
+
+  return payments;
+}
 
 function formatDate(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
@@ -388,7 +480,6 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
               <NumberInput
                 id={id}
                 min="0"
-                autoFocus
                 value={draft.amount}
                 onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
               />
@@ -449,12 +540,11 @@ function PaymentEditor({
         </Field>
         <Field label={`Amount (${currency})`}>
           {(id) => (
-            <NumberInput
+            <MoneyInput
               id={id}
               min="0"
-              autoFocus
               value={draft.amount}
-              onChange={(event) => setDraft({ ...draft, amount: Number(event.target.value) })}
+              onValueChange={(amount) => setDraft({ ...draft, amount })}
             />
           )}
         </Field>
@@ -469,6 +559,50 @@ function PaymentEditor({
         Already paid
       </label>
     </Modal>
+  );
+}
+
+/** Says in words what the plan will create, so nobody has to press Save to
+ *  find out. */
+function SchedulePreview({
+  plan,
+  currency,
+}: {
+  plan: Parameters<typeof buildSchedule>[0];
+  currency: CurrencyCode;
+}) {
+  const payments = buildSchedule(plan);
+  if (payments.length === 0) {
+    return (
+      <p className="mt-3 text-xs text-muted">
+        Fill in an amount to set up a plan, or leave this empty and add payments one at a time.
+      </p>
+    );
+  }
+
+  const total = payments.reduce((sum, payment) => sum + payment.amount, 0);
+  const last = payments[payments.length - 1];
+
+  return (
+    <p className="mt-3 rounded-lg bg-sunken p-3 text-sm text-ink-2">
+      {payments.length === 1 ? (
+        <>
+          One payment of{' '}
+          <strong className="tnum font-semibold text-ink">
+            {formatMoney(payments[0].amount, currency)}
+          </strong>{' '}
+          on {formatDate(payments[0].date)}.
+        </>
+      ) : (
+        <>
+          <strong className="tnum font-semibold text-ink">{payments.length} payments</strong> of{' '}
+          {formatMoney(payments[0].amount, currency)}, from {formatDate(payments[0].date)} to{' '}
+          {formatDate(last.date)} —{' '}
+          <strong className="tnum font-semibold text-ink">{formatMoney(total, currency)}</strong> in
+          all.
+        </>
+      )}
+    </p>
   );
 }
 
@@ -487,29 +621,21 @@ function DebtEditor({
 }) {
   const { data, updateDebt } = useBudget();
   const [draft, setDraft] = useState(debt);
-  const [plan, setPlan] = useState({ start: new Date().toISOString().slice(0, 10), amount: '', count: '' });
+  const [plan, setPlan] = useState({
+    start: new Date().toISOString().slice(0, 10),
+    amount: 0,
+    count: 12,
+    every: 'monthly' as Every,
+    customN: 2,
+    customUnit: 'weeks' as CustomUnit,
+  });
 
   const save = () => {
     let next = draft;
 
-    // Optionally lay down a repayment plan in one go, which is what most of
-    // these loans actually are.
-    const amount = Number(plan.amount);
-    const count = Number(plan.count);
-    if (Number.isFinite(amount) && amount > 0 && Number.isFinite(count) && count > 0) {
-      const start = new Date(`${plan.start}T00:00:00`);
-      const payments = Array.from({ length: Math.min(120, Math.round(count)) }, (_, index) => {
-        const date = new Date(start);
-        date.setMonth(date.getMonth() + index);
-        return {
-          id: newId('pay'),
-          date: date.toISOString().slice(0, 10),
-          amount,
-          paid: date <= new Date(),
-        };
-      });
-      next = { ...next, payments: [...next.payments, ...payments] };
-    }
+    // Lay down a repayment plan in one go, if one was filled in.
+    const payments = buildSchedule(plan);
+    if (payments.length > 0) next = { ...next, payments: [...next.payments, ...payments] };
 
     if (isNew) onSaveNew(next);
     else {
@@ -537,7 +663,6 @@ function DebtEditor({
           {(id) => (
             <TextInput
               id={id}
-              autoFocus
               value={draft.label}
               placeholder="Car loan"
               onChange={(event) => setDraft({ ...draft, label: event.target.value })}
@@ -580,11 +705,11 @@ function DebtEditor({
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Total borrowed">
             {(id) => (
-              <NumberInput
+              <MoneyInput
                 id={id}
                 min="0"
                 value={draft.principal}
-                onChange={(event) => setDraft({ ...draft, principal: Number(event.target.value) })}
+                onValueChange={(principal) => setDraft({ ...draft, principal })}
               />
             )}
           </Field>
@@ -606,12 +731,29 @@ function DebtEditor({
 
         <fieldset className="rounded-lg border border-hairline p-4">
           <legend className="px-1 text-sm font-medium text-ink">
-            Monthly payment plan (optional)
+            Repayment plan (optional)
           </legend>
           <p className="mb-3 text-xs text-muted">
-            Sets up all the payments at once. Any dated before today is ticked as paid.
+            Sets up all the payments at once. Any dated before today is ticked as paid. You can
+            change or delete any single one afterwards.
           </p>
-          <div className="grid gap-3 sm:grid-cols-3">
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="How often">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={plan.every}
+                  onChange={(event) => setPlan({ ...plan, every: event.target.value as Every })}
+                >
+                  {EVERY_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {EVERY_LABEL[option]}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
             <Field label="First payment on">
               {(id) => (
                 <TextInput
@@ -622,28 +764,65 @@ function DebtEditor({
                 />
               )}
             </Field>
-            <Field label="Amount each time">
+          </div>
+
+          {plan.every === 'custom' && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field label="Repeat every">
+                {(id) => (
+                  <NumberInput
+                    id={id}
+                    min="1"
+                    value={plan.customN}
+                    onChange={(event) => setPlan({ ...plan, customN: Number(event.target.value) })}
+                  />
+                )}
+              </Field>
+              <Field label="Days, weeks or months">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={plan.customUnit}
+                    onChange={(event) =>
+                      setPlan({ ...plan, customUnit: event.target.value as CustomUnit })
+                    }
+                  >
+                    <option value="days">Days</option>
+                    <option value="weeks">Weeks</option>
+                    <option value="months">Months</option>
+                  </Select>
+                )}
+              </Field>
+            </div>
+          )}
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <Field label={`Amount each time (${draft.currency})`}>
               {(id) => (
-                <NumberInput
+                <MoneyInput
                   id={id}
                   min="0"
                   value={plan.amount}
-                  onChange={(event) => setPlan({ ...plan, amount: event.target.value })}
+                  onValueChange={(amount) => setPlan({ ...plan, amount })}
                 />
               )}
             </Field>
-            <Field label="How many payments">
-              {(id) => (
-                <NumberInput
-                  id={id}
-                  min="0"
-                  max="120"
-                  value={plan.count}
-                  onChange={(event) => setPlan({ ...plan, count: event.target.value })}
-                />
-              )}
-            </Field>
+            {plan.every !== 'once' && (
+              <Field label="How many payments">
+                {(id) => (
+                  <NumberInput
+                    id={id}
+                    min="1"
+                    max="500"
+                    value={plan.count}
+                    onChange={(event) => setPlan({ ...plan, count: Number(event.target.value) })}
+                  />
+                )}
+              </Field>
+            )}
           </div>
+
+          <SchedulePreview plan={plan} currency={draft.currency} />
         </fieldset>
       </div>
     </Modal>

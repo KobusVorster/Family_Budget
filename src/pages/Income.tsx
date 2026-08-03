@@ -19,6 +19,7 @@ import {
   EstimateMark,
   Field,
   Modal,
+  MoneyInput,
   NumberInput,
   PageHeader,
   Select,
@@ -487,7 +488,6 @@ function IncomeEditor({
           {(id) => (
             <TextInput
               id={id}
-              autoFocus
               value={draft.label}
               placeholder="Salary"
               onChange={(event) => setDraft({ ...draft, label: event.target.value })}
@@ -541,11 +541,11 @@ function IncomeEditor({
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Amount">
             {(id) => (
-              <NumberInput
+              <MoneyInput
                 id={id}
                 min="0"
                 value={draft.amount}
-                onChange={(event) => setDraft({ ...draft, amount: Number(event.target.value) })}
+                onValueChange={(amount) => setDraft({ ...draft, amount })}
               />
             )}
           </Field>

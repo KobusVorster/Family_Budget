@@ -17,6 +17,7 @@ import {
   type Conversion,
 } from './calc';
 import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
+import { buildSchedule } from '../pages/Debts';
 import { SEED_USD_ZAR, createSeedData } from '../data/seed';
 import type { BudgetData, Debt, Expense } from '../types';
 
@@ -295,6 +296,70 @@ describe('loans', () => {
     });
     expect(jumbled.nextPayment?.date).toBe('2026-03-01');
     expect(jumbled.payoffDate).toBe('2026-09-01');
+  });
+});
+
+describe('building a repayment schedule', () => {
+  const base = {
+    start: '2026-01-31',
+    count: 3,
+    amount: 5000,
+    every: 'monthly' as const,
+    customN: 2,
+    customUnit: 'weeks' as const,
+    today: new Date('2026-01-01T00:00:00'),
+  };
+
+  it('keeps the day of the month, clamping instead of skipping a short month', () => {
+    // The 31st has no February. It must land on the 28th, not roll into March
+    // and knock every later payment out by a month.
+    const dates = buildSchedule(base).map((payment) => payment.date);
+    expect(dates).toEqual(['2026-01-31', '2026-02-28', '2026-03-31']);
+  });
+
+  it('steps whole days for daily, weekly and fortnightly', () => {
+    expect(buildSchedule({ ...base, start: '2026-03-02', every: 'daily' }).map((p) => p.date))
+      .toEqual(['2026-03-02', '2026-03-03', '2026-03-04']);
+    expect(buildSchedule({ ...base, start: '2026-03-02', every: 'weekly' }).map((p) => p.date))
+      .toEqual(['2026-03-02', '2026-03-09', '2026-03-16']);
+    expect(buildSchedule({ ...base, start: '2026-03-02', every: 'biweekly' }).map((p) => p.date))
+      .toEqual(['2026-03-02', '2026-03-16', '2026-03-30']);
+  });
+
+  it('makes exactly one payment for a one-off, whatever the count says', () => {
+    const payments = buildSchedule({ ...base, every: 'once', count: 12 });
+    expect(payments).toHaveLength(1);
+    expect(payments[0].date).toBe('2026-01-31');
+  });
+
+  it('honours a custom interval in days, weeks or months', () => {
+    expect(
+      buildSchedule({ ...base, start: '2026-03-02', every: 'custom', customN: 10, customUnit: 'days' })
+        .map((p) => p.date),
+    ).toEqual(['2026-03-02', '2026-03-12', '2026-03-22']);
+    expect(
+      buildSchedule({ ...base, start: '2026-03-02', every: 'custom', customN: 2, customUnit: 'months' })
+        .map((p) => p.date),
+    ).toEqual(['2026-03-02', '2026-05-02', '2026-07-02']);
+  });
+
+  it('ticks off only the payments already in the past', () => {
+    const payments = buildSchedule({
+      ...base,
+      start: '2026-01-31',
+      every: 'monthly',
+      count: 3,
+      today: new Date('2026-02-15T00:00:00'),
+    });
+    expect(payments.map((payment) => payment.paid)).toEqual([true, false, false]);
+  });
+
+  it('builds nothing without an amount', () => {
+    expect(buildSchedule({ ...base, amount: 0 })).toHaveLength(0);
+  });
+
+  it('refuses a silly number of payments rather than locking up', () => {
+    expect(buildSchedule({ ...base, every: 'daily', count: 100000 })).toHaveLength(500);
   });
 });
 

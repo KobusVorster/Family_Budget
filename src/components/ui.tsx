@@ -2,6 +2,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -334,6 +335,67 @@ export function NumberInput({ className = '', ...props }: InputHTMLAttributes<HT
   );
 }
 
+/** A number field that lets you actually type.
+ *
+ *  Binding a number straight to an input fights the person using it: every
+ *  keystroke runs the text through `Number()` and writes it back, so a half
+ *  typed "12." collapses to "12", clearing the box snaps it to "0", and the
+ *  caret jumps. This keeps the raw text locally while the field is being edited
+ *  and only reports a number upwards. */
+export function MoneyInput({
+  value,
+  onValueChange,
+  className = '',
+  // `min`/`max` mean nothing on a text field; accept and drop them so callers
+  // can pass them without putting junk in the DOM.
+  min: _min,
+  max: _max,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & {
+  value: number;
+  onValueChange: (next: number) => void;
+}) {
+  const [text, setText] = useState(() => (value === 0 ? '' : String(value)));
+  const committed = useRef(value);
+
+  // Re-sync only when the value changes from somewhere else — opening a
+  // different record, say — never in response to our own typing.
+  useEffect(() => {
+    if (value !== committed.current) {
+      committed.current = value;
+      setText(value === 0 ? '' : String(value));
+    }
+  }, [value]);
+
+  return (
+    <input
+      {...props}
+      /* A text field, not `type="number"`. The browser sanitises a number
+         field's value as you go, so a half-typed "12." is thrown away before
+         it can become "12.50". `inputMode` still brings up the number pad on a
+         phone. */
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      value={text}
+      onChange={(event) => {
+        // Digits and a single decimal point, nothing else.
+        const cleaned = event.target.value
+          .replace(/[^\d.]/g, '')
+          .replace(/^(\d*\.?\d*).*$/, '$1');
+        setText(cleaned);
+
+        const parsed = cleaned === '' || cleaned === '.' ? 0 : Number(cleaned);
+        if (Number.isFinite(parsed)) {
+          committed.current = parsed;
+          onValueChange(parsed);
+        }
+      }}
+      className={`${CONTROL_CLASS} tnum ${className}`}
+    />
+  );
+}
+
 export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`${CONTROL_CLASS} ${className}`} />;
 }
@@ -382,17 +444,53 @@ export function Modal({
   footer?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  /* `onClose` is almost always an inline arrow function, so it is a new value
+     on every render of the parent. Keeping it in a ref means the effects below
+     can depend on `open` alone. When they depended on `onClose`, every
+     keystroke re-ran them and the focus call below yanked the caret out of
+     whatever field was being typed into. */
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') closeRef.current();
     };
     document.addEventListener('keydown', onKey);
-    // Move focus into the dialog so keyboard users are not left behind it.
-    ref.current?.focus();
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    /* Put the reader back exactly where they were when the dialog closes.
+       Editing the fifteenth bill in a long list and being dumped at the top
+       afterwards loses your place every time.
+
+       Note there is no `overflow: hidden` scroll lock here. Because `body` is
+       `height: 100%`, hiding its overflow clips the page, the scrollable height
+       collapses, and the browser clamps the scroll position — which moved the
+       list the moment the dialog opened. */
+    openerRef.current = document.activeElement as HTMLElement | null;
+    const scrollY = window.scrollY;
+
+    /* Focus the first field ourselves rather than letting fields carry
+       `autoFocus`. React's autoFocus calls focus() with no options, and a plain
+       focus() scrolls the target into view — which is what dragged the page up
+       the moment a dialog opened. */
+    const first = ref.current?.querySelector<HTMLElement>(
+      'input:not([type="checkbox"]):not([type="hidden"]), select, textarea',
+    );
+    (first ?? ref.current)?.focus({ preventScroll: true });
+
+    return () => {
+      openerRef.current?.focus?.({ preventScroll: true });
+      window.scrollTo({ top: scrollY });
+    };
+  }, [open]);
 
   if (!open) return null;
 

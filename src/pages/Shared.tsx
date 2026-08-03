@@ -10,7 +10,7 @@ import {
   EmptyState,
   Field,
   HeroFigure,
-  NumberInput,
+  MoneyInput,
   PageHeader,
   StatTile,
 } from '../components/ui';
@@ -121,22 +121,22 @@ export default function Shared() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Full rent each month (R)">
               {(id) => (
-                <NumberInput
+                <MoneyInput
                   id={id}
                   min="0"
                   value={saTotalRent}
-                  onChange={(event) => setRent({ saTotalRent: Number(event.target.value) })}
+                  onValueChange={(value) => setRent({ saTotalRent: value })}
                 />
               )}
             </Field>
             <Field label="What Daddy pays (R)">
               {(id) => (
-                <NumberInput
+                <MoneyInput
                   id={id}
                   min="0"
                   max={saTotalRent}
                   value={saRentFromDaddy}
-                  onChange={(event) => setRent({ saRentFromDaddy: Number(event.target.value) })}
+                  onValueChange={(value) => setRent({ saRentFromDaddy: value })}
                 />
               )}
             </Field>

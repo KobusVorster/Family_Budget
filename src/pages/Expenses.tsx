@@ -13,6 +13,7 @@ import {
   EstimateMark,
   Field,
   Modal,
+  MoneyInput,
   NumberInput,
   PageHeader,
   SegmentedControl,
@@ -348,7 +349,6 @@ function ExpenseEditor({
           {(id) => (
             <TextInput
               id={id}
-              autoFocus
               value={draft.label}
               placeholder="Car insurance"
               onChange={(event) => setDraft({ ...draft, label: event.target.value })}
@@ -395,11 +395,11 @@ function ExpenseEditor({
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Amount">
             {(id) => (
-              <NumberInput
+              <MoneyInput
                 id={id}
                 min="0"
                 value={draft.amount}
-                onChange={(event) => setDraft({ ...draft, amount: Number(event.target.value) })}
+                onValueChange={(amount) => setDraft({ ...draft, amount })}
               />
             )}
           </Field>

@@ -28,7 +28,7 @@ import {
   HeroFigure,
   Meter,
   Modal,
-  NumberInput,
+  MoneyInput,
   Select,
   StatTile,
   TextInput,
@@ -620,7 +620,6 @@ function SavingEditor({
           {(id) => (
             <TextInput
               id={id}
-              autoFocus
               value={draft.label}
               placeholder="Emergency fund"
               onChange={(event) => setDraft({ ...draft, label: event.target.value })}
@@ -650,11 +649,11 @@ function SavingEditor({
           </Field>
           <Field label="How much">
             {(id) => (
-              <NumberInput
+              <MoneyInput
                 id={id}
                 min="0"
                 value={draft.amount}
-                onChange={(event) => setDraft({ ...draft, amount: Number(event.target.value) })}
+                onValueChange={(amount) => setDraft({ ...draft, amount })}
               />
             )}
           </Field>
