@@ -178,7 +178,7 @@ export default function Expenses() {
                 subtitle={`${group.items.length} bill${group.items.length === 1 ? '' : 's'}`}
                 action={
                   <span className="tnum text-sm font-semibold text-ink">
-                    {formatMoney(group.total, currency)}
+                    {formatMoney(group.total, currency, { round: 'auto' })}
                   </span>
                 }
               />
@@ -255,11 +255,11 @@ function ExpenseRow({ expense, onEdit }: { expense: Expense; onEdit: () => void 
       </div>
       <div className="shrink-0 text-right">
         <p className="tnum text-sm font-medium text-ink">
-          {formatMoney(monthlyValue(expense, conversion), currency)}
+          {formatMoney(monthlyValue(expense, conversion), currency, { round: 'auto' })}
         </p>
         {(expense.currency !== currency || expense.frequency !== 'monthly') && (
           <p className="tnum text-xs text-muted">
-            {formatMoney(expense.amount, expense.currency, { round: expense.amount >= 100 })}{' '}
+            {formatMoney(expense.amount, expense.currency, { round: 'auto' })}{' '}
             {expense.frequency !== 'monthly' ? FREQUENCY_LABEL[expense.frequency].toLowerCase() : ''}
           </p>
         )}
@@ -439,7 +439,9 @@ function ExpenseEditor({
         <p className="rounded-lg bg-sunken p-3 text-sm text-ink-2">
           That is{' '}
           <strong className="tnum font-semibold text-ink">
-            {formatMoney(toMonthly(draft.amount, draft.frequency), draft.currency)}
+            {formatMoney(toMonthly(draft.amount, draft.frequency), draft.currency, {
+              round: 'auto',
+            })}
           </strong>{' '}
           a month.
         </p>

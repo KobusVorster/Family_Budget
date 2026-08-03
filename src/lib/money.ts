@@ -60,8 +60,15 @@ export function currencySymbol(currency: CurrencyCode): string {
 }
 
 export interface FormatOptions {
-  /** Drop the decimals. Default true — cents are noise at dashboard scale. */
-  round?: boolean;
+  /** How to handle cents.
+   *
+   *  `true`   — never show them. For big roll-ups where they are noise.
+   *  `false`  — always show them.
+   *  `'auto'` — show them only when the amount actually has them, so 23.33
+   *             reads as 23.33 while 5000 stays 5,000. Use this anywhere a
+   *             figure someone typed is shown back to them; rounding their own
+   *             number away looks like the app lost it. */
+  round?: boolean | 'auto';
   /** Render 12,900 as 12.9K and 4,200,000 as 4.2M. For stat tiles and axes. */
   compact?: boolean;
   /** Always show a leading + or -. */
@@ -74,6 +81,8 @@ export function formatMoney(
   options: FormatOptions = {},
 ): string {
   const { round = true, compact = false, signed = false } = options;
+  const hasCents = Math.abs(amount % 1) > 0.0000001;
+  const showCents = round === false || (round === 'auto' && hasCents);
   const symbol = SYMBOL[currency];
   const negative = amount < 0;
   const value = Math.abs(amount);
@@ -85,8 +94,8 @@ export function formatMoney(
     body = `${trimZero(value / 1_000)}K`;
   } else {
     body = value.toLocaleString('en-US', {
-      minimumFractionDigits: round ? 0 : 2,
-      maximumFractionDigits: round ? 0 : 2,
+      minimumFractionDigits: showCents ? 2 : 0,
+      maximumFractionDigits: showCents ? 2 : 0,
     });
   }
 

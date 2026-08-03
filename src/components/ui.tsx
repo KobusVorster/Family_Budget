@@ -379,8 +379,12 @@ export function MoneyInput({
       autoComplete="off"
       value={text}
       onChange={(event) => {
-        // Digits and a single decimal point, nothing else.
+        /* A comma counts as a decimal point. Numeric keypads emit whichever
+           the keyboard layout says, and half the world writes 23,33 anyway —
+           refusing one of them just makes the field feel broken. Everything
+           else is dropped, and only the first separator is kept. */
         const cleaned = event.target.value
+          .replace(/,/g, '.')
           .replace(/[^\d.]/g, '')
           .replace(/^(\d*\.?\d*).*$/, '$1');
         setText(cleaned);

@@ -191,7 +191,11 @@ export default function Debts() {
         />
         <StatTile
           label="Next payment"
-          value={nextDue ? formatMoney(nextDue.nextPayment!.amount, nextDue.debt.currency) : '—'}
+          value={
+            nextDue
+              ? formatMoney(nextDue.nextPayment!.amount, nextDue.debt.currency, { round: 'auto' })
+              : '—'
+          }
           detail={
             nextDue ? `${nextDue.debt.label} · ${formatDate(nextDue.nextPayment!.date)}` : undefined
           }
@@ -315,7 +319,7 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
           </div>
           <div className="text-right">
             <p className="tnum text-xl font-semibold">
-              {formatMoney(summary.remaining, debt.currency)}
+              {formatMoney(summary.remaining, debt.currency, { round: 'auto' })}
             </p>
             <p className="text-xs text-muted">left to pay</p>
           </div>
@@ -330,11 +334,15 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
           <div>
             <dt className="text-muted">Borrowed</dt>
-            <dd className="tnum mt-0.5 font-medium">{formatMoney(debt.principal, debt.currency)}</dd>
+            <dd className="tnum mt-0.5 font-medium">
+              {formatMoney(debt.principal, debt.currency, { round: 'auto' })}
+            </dd>
           </div>
           <div>
             <dt className="text-muted">Paid so far</dt>
-            <dd className="tnum mt-0.5 font-medium">{formatMoney(summary.paid, debt.currency)}</dd>
+            <dd className="tnum mt-0.5 font-medium">
+              {formatMoney(summary.paid, debt.currency, { round: 'auto' })}
+            </dd>
           </div>
           <div>
             <dt className="text-muted">Payments left</dt>
@@ -387,7 +395,7 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
                   <span
                     className={`tnum text-sm font-medium ${payment.paid ? 'text-ink' : 'text-muted'}`}
                   >
-                    {formatMoney(payment.amount, debt.currency)}
+                    {formatMoney(payment.amount, debt.currency, { round: 'auto' })}
                   </span>
                   {!payment.paid && <Badge>due</Badge>}
                   <Button variant="ghost" onClick={() => setEditingPayment(payment)}>
@@ -589,16 +597,20 @@ function SchedulePreview({
         <>
           One payment of{' '}
           <strong className="tnum font-semibold text-ink">
-            {formatMoney(payments[0].amount, currency)}
+            {formatMoney(payments[0].amount, currency, { round: 'auto' })}
           </strong>{' '}
           on {formatDate(payments[0].date)}.
         </>
       ) : (
         <>
           <strong className="tnum font-semibold text-ink">{payments.length} payments</strong> of{' '}
-          {formatMoney(payments[0].amount, currency)}, from {formatDate(payments[0].date)} to{' '}
+          {formatMoney(payments[0].amount, currency, { round: 'auto' })}, from{' '}
+          {formatDate(payments[0].date)} to{' '}
           {formatDate(last.date)} —{' '}
-          <strong className="tnum font-semibold text-ink">{formatMoney(total, currency)}</strong> in
+          <strong className="tnum font-semibold text-ink">
+            {formatMoney(total, currency, { round: 'auto' })}
+          </strong>{' '}
+          in
           all.
         </>
       )}

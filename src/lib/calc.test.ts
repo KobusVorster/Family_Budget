@@ -604,4 +604,20 @@ describe('money formatting', () => {
   it('can show cents for small amounts', () => {
     expect(formatMoney(15.49, 'USD', { round: false })).toBe('$15.49');
   });
+
+  it("keeps the cents someone typed rather than rounding them away", () => {
+    // A figure entered as 23.33 must read back as 23.33. Showing "$23" looks
+    // like the app lost the change.
+    expect(formatMoney(23.33, 'USD', { round: 'auto' })).toBe('$23.33');
+    expect(formatMoney(1234.5, 'ZAR', { round: 'auto' })).toBe('R1,234.50');
+  });
+
+  it('leaves whole amounts clean', () => {
+    expect(formatMoney(5000, 'ZAR', { round: 'auto' })).toBe('R5,000');
+    expect(formatMoney(-23.33, 'USD', { round: 'auto' })).toBe('-$23.33');
+  });
+
+  it('still rounds hard when asked, for big roll-ups', () => {
+    expect(formatMoney(6301.47, 'USD')).toBe('$6,301');
+  });
 });

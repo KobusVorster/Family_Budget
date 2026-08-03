@@ -141,7 +141,7 @@ export default function Checklist() {
                 <CardHeader
                   inset
                   title={group.title}
-                  subtitle={`${group.items.length} bills · ${formatMoney(groupTotal, currency)}`}
+                  subtitle={`${group.items.length} bills · ${formatMoney(groupTotal, currency, { round: 'auto' })}`}
                   action={
                     <Button onClick={() => setChecklistBulk(keys, !allPaid)}>
                       {allPaid ? 'Untick all' : 'Tick all'}
@@ -191,7 +191,9 @@ export default function Checklist() {
                               paid ? 'text-muted' : 'text-ink'
                             }`}
                           >
-                            {formatMoney(monthlyValue(expense, conversion), currency)}
+                            {formatMoney(monthlyValue(expense, conversion), currency, {
+                              round: 'auto',
+                            })}
                           </span>
                         </label>
                       </li>

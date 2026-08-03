@@ -12,7 +12,7 @@ import {
   CardHeader,
   ConfirmDialog,
   Field,
-  NumberInput,
+  MoneyInput,
   PageHeader,
   SegmentedControl,
   StatTile,
@@ -23,7 +23,7 @@ export default function Settings() {
   const { data, updateSettings, replaceAll, resetToSeed, clearAll, refreshRate, rateStatus } =
     useBudget();
   const [confirming, setConfirming] = useState<'reset' | 'clear' | null>(null);
-  const [rateDraft, setRateDraft] = useState(String(data.settings.usdZarRate));
+  const [rateDraft, setRateDraft] = useState(data.settings.usdZarRate);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -33,7 +33,7 @@ export default function Settings() {
   );
 
   const applyRate = () => {
-    const rate = Number(rateDraft);
+    const rate = rateDraft;
     if (!Number.isFinite(rate) || rate <= 0) return;
     updateSettings({
       usdZarRate: rate,
@@ -88,11 +88,10 @@ export default function Settings() {
           <div className="mb-3 flex flex-wrap items-end gap-3">
             <Field label="Rand for $1">
               {(id) => (
-                <NumberInput
+                <MoneyInput
                   id={id}
-                  min="0"
                   value={rateDraft}
-                  onChange={(event) => setRateDraft(event.target.value)}
+                  onValueChange={setRateDraft}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') applyRate();
                   }}
@@ -103,7 +102,7 @@ export default function Settings() {
             <Button
               variant="primary"
               onClick={applyRate}
-              disabled={Number(rateDraft) === data.settings.usdZarRate}
+              disabled={rateDraft === data.settings.usdZarRate}
             >
               Use this rate
             </Button>

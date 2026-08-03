@@ -446,7 +446,7 @@ function WhatToPay({ items, currency }: { items: DueItem[]; currency: CurrencyCo
                     </span>
                     <span className="shrink-0 text-right">
                       <span className="tnum block text-sm font-medium text-ink">
-                        {formatMoney(item.amount, currency)}
+                        {formatMoney(item.amount, currency, { round: 'auto' })}
                       </span>
                       <span
                         className="block text-xs"
@@ -549,7 +549,7 @@ function SavingsCard() {
                   <p className="text-xs text-muted">{person?.name}</p>
                 </div>
                 <p className="tnum shrink-0 text-sm font-medium text-ink">
-                  {formatMoney(saving.amount, saving.currency)}
+                  {formatMoney(saving.amount, saving.currency, { round: 'auto' })}
                 </p>
                 <Button variant="ghost" onClick={() => setEditing(saving)}>
                   Edit

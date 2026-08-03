@@ -222,7 +222,7 @@ export default function Shared() {
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="truncate text-sm font-medium text-ink">{expense.label}</p>
                     <p className="tnum shrink-0 text-sm font-medium text-ink">
-                      {formatMoney(monthlyValue(expense, conversion), currency)}
+                      {formatMoney(monthlyValue(expense, conversion), currency, { round: 'auto' })}
                     </p>
                   </div>
                   <p className="mt-0.5 text-xs text-muted">

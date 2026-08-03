@@ -20,7 +20,6 @@ import {
   Field,
   Modal,
   MoneyInput,
-  NumberInput,
   PageHeader,
   Select,
   StatTile,
@@ -151,20 +150,23 @@ export default function Income() {
                         {source.frequency === 'once' ? (
                           <>
                             <p className="tnum text-sm font-medium text-ink">
-                              {formatMoney(source.amount, source.currency)}
+                              {formatMoney(source.amount, source.currency, { round: 'auto' })}
                             </p>
                             <p className="text-xs text-muted">one-off</p>
                           </>
                         ) : (
                           <>
                             <p className="tnum text-sm font-medium text-ink">
-                              {formatMoney(monthlyValue(source, conversion), currency)}
+                              {formatMoney(monthlyValue(source, conversion), currency, {
+                                round: 'auto',
+                              })}
                             </p>
                             {source.currency !== currency && (
                               <p className="tnum text-xs text-muted">
                                 {formatMoney(
                                   toMonthly(source.amount, source.frequency),
                                   source.currency,
+                                  { round: 'auto' },
                                 )}
                               </p>
                             )}
@@ -321,7 +323,7 @@ function LedgerCard() {
     date: new Date().toISOString().slice(0, 10),
     personId: data.people[0]?.id ?? 'will',
     label: 'DoorDash',
-    amount: '',
+    amount: 0,
   });
 
   const entries = useMemo(
@@ -333,7 +335,7 @@ function LedgerCard() {
   const person = data.people.find((p) => p.id === draft.personId);
 
   const submit = () => {
-    const amount = Number(draft.amount);
+    const amount = draft.amount;
     if (!Number.isFinite(amount) || amount <= 0 || !draft.label.trim()) return;
     addLedgerEntry({
       id: newId('led'),
@@ -344,7 +346,7 @@ function LedgerCard() {
       currency: person?.currency ?? 'USD',
       type: 'income',
     });
-    setDraft((current) => ({ ...current, amount: '' }));
+    setDraft((current) => ({ ...current, amount: 0 }));
   };
 
   return (
@@ -383,12 +385,11 @@ function LedgerCard() {
         </Field>
         <Field label={`Amount (${person?.currency ?? 'USD'})`}>
           {(id) => (
-            <NumberInput
+            <MoneyInput
               id={id}
-              min="0"
               value={draft.amount}
               placeholder="0.00"
-              onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
+              onValueChange={(amount) => setDraft({ ...draft, amount })}
             />
           )}
         </Field>
@@ -587,7 +588,7 @@ function IncomeEditor({
             <>
               A one-off of{' '}
               <strong className="tnum font-semibold text-ink">
-                {formatMoney(draft.amount, draft.currency)}
+                {formatMoney(draft.amount, draft.currency, { round: 'auto' })}
               </strong>
               . It is kept on the list but adds nothing to the monthly total, because it does not
               come in every month.
@@ -596,7 +597,9 @@ function IncomeEditor({
             <>
               That is{' '}
               <strong className="tnum font-semibold text-ink">
-                {formatMoney(toMonthly(draft.amount, draft.frequency), draft.currency)}
+                {formatMoney(toMonthly(draft.amount, draft.frequency), draft.currency, {
+                  round: 'auto',
+                })}
               </strong>{' '}
               a month.
             </>
