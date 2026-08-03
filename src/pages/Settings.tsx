@@ -10,15 +10,19 @@ import {
   Button,
   Card,
   CardHeader,
+  ConfirmDialog,
   Field,
   NumberInput,
   PageHeader,
   SegmentedControl,
   StatTile,
+  Switch,
 } from '../components/ui';
 
 export default function Settings() {
-  const { data, updateSettings, replaceAll, resetToSeed, clearAll } = useBudget();
+  const { data, updateSettings, replaceAll, resetToSeed, clearAll, refreshRate, rateStatus } =
+    useBudget();
+  const [confirming, setConfirming] = useState<'reset' | 'clear' | null>(null);
   const [rateDraft, setRateDraft] = useState(String(data.settings.usdZarRate));
   const [importError, setImportError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -34,6 +38,7 @@ export default function Settings() {
     updateSettings({
       usdZarRate: rate,
       rateUpdatedAt: new Date().toISOString().slice(0, 10),
+      rateSource: 'manual',
     });
   };
 
@@ -54,9 +59,33 @@ export default function Settings() {
         <Card>
           <CardHeader
             title="Exchange rate"
-            subtitle="Type in the rate yourself. Every dollar-to-rand amount in the app uses it."
+            subtitle="The app looks this up for you. You can also type it in yourself."
           />
-          <div className="flex flex-wrap items-end gap-3">
+
+          <div className="mb-4 flex items-center justify-between gap-4 rounded-lg bg-sunken p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">Look it up automatically</p>
+              <p className="mt-0.5 text-xs text-ink-2">
+                {rateStatus === 'checking'
+                  ? 'Checking…'
+                  : rateStatus === 'failed'
+                    ? 'Could not reach the internet. Type the rate in below.'
+                    : data.settings.rateSource === 'auto'
+                      ? 'Looked up once a day when you open the app.'
+                      : 'On, but the rate below was typed in by hand.'}
+              </p>
+            </div>
+            <Switch
+              label="Look the exchange rate up automatically"
+              checked={data.settings.autoRate}
+              onChange={(next) => {
+                updateSettings({ autoRate: next });
+                if (next) void refreshRate();
+              }}
+            />
+          </div>
+
+          <div className="mb-3 flex flex-wrap items-end gap-3">
             <Field label="Rand for $1">
               {(id) => (
                 <NumberInput
@@ -76,7 +105,10 @@ export default function Settings() {
               onClick={applyRate}
               disabled={Number(rateDraft) === data.settings.usdZarRate}
             >
-              Update rate
+              Use this rate
+            </Button>
+            <Button onClick={() => void refreshRate()} disabled={rateStatus === 'checking'}>
+              {rateStatus === 'checking' ? 'Checking…' : 'Check now'}
             </Button>
           </div>
 
@@ -85,6 +117,12 @@ export default function Settings() {
               <dt className="text-muted">Using now</dt>
               <dd className="tnum mt-0.5 font-medium">
                 $1 = R{data.settings.usdZarRate.toFixed(4)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted">Where it came from</dt>
+              <dd className="mt-0.5 font-medium">
+                {data.settings.rateSource === 'auto' ? 'Looked up' : 'Typed in'}
               </dd>
             </div>
             <div>
@@ -110,9 +148,16 @@ export default function Settings() {
             </div>
           </dl>
 
-          {data.settings.usdZarRate === SEED_USD_ZAR && (
+          {rateStatus === 'failed' && (
             <p className="mt-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
-              You have not changed this rate yet. Look up today’s rate and type it in.
+              The app could not reach the internet to check the rate. This happens when the page is
+              opened somewhere that blocks outside connections. Type today’s rate in the box above
+              and press Use this rate.
+            </p>
+          )}
+          {rateStatus !== 'failed' && data.settings.usdZarRate === SEED_USD_ZAR && (
+            <p className="mt-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
+              This rate has not been checked yet. Press Check now, or type today’s rate in.
             </p>
           )}
         </Card>
@@ -254,32 +299,10 @@ export default function Settings() {
               }
             }}
           />
-          <Button
-            className="ml-auto"
-            onClick={() => {
-              if (
-                window.confirm(
-                  'Put back the numbers this app started with? Everything you have typed will be lost.',
-                )
-              ) {
-                resetToSeed();
-              }
-            }}
-          >
+          <Button className="ml-auto" onClick={() => setConfirming('reset')}>
             Start over
           </Button>
-          <Button
-            variant="danger"
-            onClick={() => {
-              if (
-                window.confirm(
-                  'Delete everything and start with a blank budget? This cannot be undone.',
-                )
-              ) {
-                clearAll();
-              }
-            }}
-          >
+          <Button variant="danger" onClick={() => setConfirming('clear')}>
             Delete everything
           </Button>
         </div>
@@ -290,6 +313,50 @@ export default function Settings() {
         </p>
       </Card>
 
+      <ConfirmDialog
+        open={confirming === 'reset'}
+        title="Start over?"
+        confirmLabel="Yes, start over"
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => {
+          resetToSeed();
+          setConfirming(null);
+        }}
+        body={
+          <>
+            This puts back the numbers the app came with and throws away everything you have typed
+            — all {data.expenses.length} bills, {data.income.length} money-in lines,{' '}
+            {data.debts.length} loans and {data.savings.length} savings.
+            <br />
+            <br />
+            If you might want any of it back, press Cancel and use{' '}
+            <strong className="text-ink">Save a copy</strong> first.
+          </>
+        }
+      />
+
+      <ConfirmDialog
+        open={confirming === 'clear'}
+        danger
+        title="Delete everything?"
+        confirmLabel="Yes, delete it all"
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => {
+          clearAll();
+          setConfirming(null);
+        }}
+        body={
+          <>
+            This empties the whole budget — {data.expenses.length} bills, {data.income.length}{' '}
+            money-in lines, {data.debts.length} loans, {data.savings.length} savings and{' '}
+            {data.ledger.length} daily earnings. Only the two of you and the exchange rate stay.
+            <br />
+            <br />
+            <strong className="text-ink">This cannot be undone.</strong> Press Cancel and use{' '}
+            <strong className="text-ink">Save a copy</strong> if you want a backup first.
+          </>
+        }
+      />
     </div>
   );
 }

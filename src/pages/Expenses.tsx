@@ -244,6 +244,7 @@ function ExpenseRow({ expense, onEdit }: { expense: Expense; onEdit: () => void 
         </p>
         <p className="truncate text-xs text-muted">
           {FREQUENCY_LABEL[expense.frequency]}
+          {expense.dueDay ? ` · due on the ${expense.dueDay}` : ''}
           {expense.owner === 'shared'
             ? ` · shared, paid by ${payer?.name ?? '—'}`
             : ` · ${owner?.name ?? '—'}`}
@@ -490,6 +491,27 @@ function ExpenseEditor({
             </div>
           </div>
         )}
+
+        <Field
+          label="Day of the month it is due"
+          hint="Optional. Used to sort the “What to pay” list on the Overview page. Leave blank if it has no set day."
+        >
+          {(id) => (
+            <NumberInput
+              id={id}
+              min="1"
+              max="31"
+              placeholder="e.g. 25"
+              value={draft.dueDay ?? ''}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  dueDay: event.target.value ? Number(event.target.value) : undefined,
+                })
+              }
+            />
+          )}
+        </Field>
 
         <Field label="Account or card" hint="Optional. Handy when checking a bank statement.">
           {(id) => (

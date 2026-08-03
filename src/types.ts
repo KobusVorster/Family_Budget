@@ -1,8 +1,11 @@
 export type CurrencyCode = 'USD' | 'ZAR';
 
-/** How often a recurring amount lands. Everything is normalised to a monthly
- *  figure for comparison — see `lib/money.ts`. */
-export type Frequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'annual';
+/** How often an amount lands. Everything is turned into a monthly figure so
+ *  amounts can be compared — see `lib/money.ts`.
+ *
+ *  `once` is a one-off: it happened, but it is not part of every month, so it
+ *  counts as 0 towards the monthly figure. */
+export type Frequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'annual' | 'once';
 
 export type PersonId = string;
 
@@ -64,6 +67,8 @@ export interface Expense {
   /** Only meaningful when `owner === 'shared'`. Fractions per person, summing
    *  to 1. */
   split?: Record<PersonId, number>;
+  /** Day of the month it is due, 1-31. Drives the "what to pay next" list. */
+  dueDay?: number;
   account?: string;
   active: boolean;
   verified: boolean;
@@ -87,12 +92,9 @@ export interface Debt {
   personId: PersonId;
   lender: string;
   currency: CurrencyCode;
-  /** Original amount borrowed. */
+  /** Original amount borrowed. What is left is this minus everything ticked
+   *  off in `payments` — nothing else is deducted. */
   principal: number;
-  /** Set when this loan paid off an earlier one: part of the principal went
-   *  straight to clearing that debt rather than to the borrower. Read live off
-   *  the other debt's balance, so the two can never disagree. */
-  offsetFromDebtId?: string;
   payments: DebtPayment[];
   verified: boolean;
   note?: string;
@@ -113,11 +115,27 @@ export interface LedgerEntry {
 /** `${expenseId}:${YYYY-MM}` -> paid. Drives the monthly checklist. */
 export type Checklist = Record<string, boolean>;
 
+/** Money set aside. Not income and not a bill — just a balance that each
+ *  person keeps and updates. */
+export interface Saving {
+  id: string;
+  personId: PersonId;
+  label: string;
+  amount: number;
+  currency: CurrencyCode;
+  note?: string;
+}
+
 export interface Settings {
   /** How many ZAR one USD buys. Entered by hand and dated, because there is no
    *  live rate feed in the app. */
   usdZarRate: number;
   rateUpdatedAt: string;
+  /** Look the rate up automatically on load. Turn it off to keep a rate you
+   *  typed in yourself. */
+  autoRate: boolean;
+  /** Where the rate in use came from. */
+  rateSource: 'auto' | 'manual';
   /** Which currency totals are reported in. Individual lines still show their
    *  own currency alongside, so nobody has to do the conversion in their head
    *  to recognise a number they entered. */
@@ -144,6 +162,7 @@ export interface BudgetData {
   expenses: Expense[];
   debts: Debt[];
   ledger: LedgerEntry[];
+  savings: Saving[];
   checklist: Checklist;
   settings: Settings;
 }

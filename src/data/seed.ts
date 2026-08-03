@@ -114,156 +114,9 @@ function seedIncome(): IncomeSource[] {
 
 /* -- expenses ------------------------------------------------------------- */
 
-/** Liz's 22 personal bills. Each one a guess; the total is real. */
-const LIZ_LINES: Array<[string, Expense['category'], number]> = [
-  ['Rent — Liz’s share', 'Housing', 4500],
-  ['Car loan', 'Transport', 3900],
-  ['FNB personal loan', 'Debt', 2500],
-  ['Oom Fanus repayment', 'Debt', 1000],
-  ['Work loan repayment', 'Debt', 5000],
-  ['Car insurance', 'Insurance', 1150],
-  ['Life & funeral cover', 'Insurance', 890],
-  ['Medical aid', 'Insurance', 1700],
-  ['Katy-Anne school fees', 'Family', 2800],
-  ['Katy-Anne aftercare', 'Family', 950],
-  ['School transport', 'Family', 700],
-  ['Groceries', 'Living', 3200],
-  ['Electricity & water', 'Utilities', 1250],
-  ['Cellphone', 'Utilities', 649],
-  ['Petrol', 'Transport', 1300],
-  ['Truworths account', 'Living', 620],
-  ['Foschini account', 'Living', 480],
-  ['Woolworths account', 'Living', 540],
-  ['Netflix & Showmax', 'Subscriptions', 348],
-  ['Apple iCloud & iTunes', 'Subscriptions', 179],
-  ['Gym', 'Living', 499],
-  ['Bank charges', 'Utilities', 168.09],
-];
-
-/** Will's US bills. Every amount is a guess. */
-const WILL_LINES: Array<[string, Expense['category'], number, Expense['frequency'], string]> = [
-  ['Rent', 'Housing', 1250, 'monthly', 'Checking'],
-  ['Car loan', 'Transport', 420, 'monthly', 'Chase Auto'],
-  ['Car insurance', 'Insurance', 165, 'monthly', 'Checking'],
-  ['Health insurance', 'Insurance', 210, 'monthly', 'Checking'],
-  ['Capital One card', 'Debt', 180, 'monthly', 'Capital One'],
-  ['Discover card', 'Debt', 120, 'monthly', 'Discover'],
-  ['Phone — T-Mobile', 'Utilities', 85, 'monthly', 'Checking'],
-  ['Groceries', 'Living', 100, 'weekly', 'Checking'],
-  ['Fuel', 'Transport', 65, 'weekly', 'Checking'],
-  ['Netflix', 'Subscriptions', 15.49, 'monthly', 'Card'],
-  ['Apple', 'Subscriptions', 9.99, 'monthly', 'Card'],
-  ['Google One', 'Subscriptions', 2.99, 'monthly', 'Card'],
-  ['Spotify', 'Subscriptions', 11.99, 'monthly', 'Card'],
-];
-
+/** Money out starts empty. Bills get added in the app, not shipped with it. */
 function seedExpenses(): Expense[] {
-  const expenses: Expense[] = [];
-
-  LIZ_LINES.forEach(([label, category, amount], index) => {
-    expenses.push({
-      id: `exp-liz-${index + 1}`,
-      label,
-      category,
-      amount,
-      currency: 'ZAR',
-      frequency: 'monthly',
-      owner: LIZ,
-      paidBy: LIZ,
-      active: true,
-      verified: false,
-    });
-  });
-
-  WILL_LINES.forEach(([label, category, amount, frequency, account], index) => {
-    expenses.push({
-      id: `exp-will-${index + 1}`,
-      label,
-      category,
-      amount,
-      currency: 'USD',
-      frequency,
-      owner: WILL,
-      paidBy: WILL,
-      account,
-      active: true,
-      verified: false,
-    });
-  });
-
-  /* The shared bills — South African household costs Will pays from the US. */
-  const shared: Expense[] = [
-    {
-      id: 'exp-shared-rent',
-      label: 'SA house rent — Will’s portion',
-      category: 'Housing',
-      amount: 10000,
-      currency: 'ZAR',
-      frequency: 'monthly',
-      owner: 'shared',
-      paidBy: WILL,
-      split: { [WILL]: 1, [LIZ]: 0 },
-      active: true,
-      verified: false,
-      note: 'Set the full rent and Daddy’s share on the Shared page.',
-    },
-    {
-      id: 'exp-shared-domestic',
-      label: 'Domestic help — Maggie',
-      category: 'Family',
-      amount: 2400,
-      currency: 'ZAR',
-      frequency: 'monthly',
-      owner: 'shared',
-      paidBy: WILL,
-      split: { [WILL]: 1, [LIZ]: 0 },
-      active: true,
-      verified: false,
-    },
-    {
-      id: 'exp-shared-internet',
-      label: 'SA internet',
-      category: 'Utilities',
-      amount: 899,
-      currency: 'ZAR',
-      frequency: 'monthly',
-      owner: 'shared',
-      paidBy: WILL,
-      split: { [WILL]: 1, [LIZ]: 0 },
-      active: true,
-      verified: false,
-    },
-    {
-      id: 'exp-shared-daddy',
-      label: 'Daddy support',
-      category: 'Family',
-      amount: 1500,
-      currency: 'ZAR',
-      frequency: 'weekly',
-      owner: 'shared',
-      paidBy: WILL,
-      split: { [WILL]: 1, [LIZ]: 0 },
-      active: true,
-      verified: true,
-      note: 'R1,500 a week.',
-    },
-    {
-      id: 'exp-shared-topup',
-      label: 'Top-up for Liz’s shortfall',
-      category: 'Family',
-      amount: LIZ_MONTHLY_SHORTFALL,
-      currency: 'ZAR',
-      frequency: 'monthly',
-      owner: 'shared',
-      paidBy: WILL,
-      split: { [WILL]: 1, [LIZ]: 0 },
-      active: true,
-      verified: true,
-      note: 'What Liz is short each month once her own bills are paid.',
-    },
-  ];
-
-  return [...expenses, ...shared];
+  return [];
 }
 
 /* -- debts ---------------------------------------------------------------- */
@@ -315,12 +168,12 @@ function seedDebts(today: Date): Debt[] {
     principal: 37500,
     payments: schedule('pay-job1', job1Start, 9, () => 2500, today),
     verified: true,
-    note: 'R15,000 was still owed when the current work loan paid it off.',
   };
 
-  /* Work loan 2 — R230,000 borrowed, R15,000 of which paid off loan 1, over 33
-     monthly payments. The offset tracks loan 1's balance rather than being a
-     fixed number, so the two can never disagree. */
+  /* Work loan 2 — R230,000 borrowed over 33 monthly payments. What is left is
+     simply the R230,000 less whatever has been ticked off. Money that went to
+     the older loan is recorded as a payment line, not deducted behind the
+     scenes. */
   const job2Start = addMonths(today, -6);
   const job2: Debt = {
     id: 'debt-job-2',
@@ -329,7 +182,6 @@ function seedDebts(today: Date): Debt[] {
     lender: 'Employer',
     currency: 'ZAR',
     principal: 230000,
-    offsetFromDebtId: 'debt-job-1',
     payments: schedule(
       'pay-job2',
       job2Start,
@@ -340,20 +192,6 @@ function seedDebts(today: Date): Debt[] {
       today,
     ),
     verified: true,
-  };
-
-  /* UR shares payback — stands on its own, nothing else feeds into it. */
-  const urStart = addMonths(today, -13);
-  const ur: Debt = {
-    id: 'debt-ur-shares',
-    label: 'UR shares payback',
-    personId: LIZ,
-    lender: 'UR',
-    currency: 'ZAR',
-    principal: 130208,
-    payments: schedule('pay-ur', urStart, 14, (index) => (index % 4 === 3 ? 6000 : 3500), today),
-    verified: true,
-    note: 'The payment amounts are a guess.',
   };
 
   const carStart = addMonths(today, -20);
@@ -392,7 +230,7 @@ function seedDebts(today: Date): Debt[] {
     verified: false,
   };
 
-  return [fanus, job1, job2, ur, car, capOne, discover];
+  return [fanus, job1, job2, car, capOne, discover];
 }
 
 /* -- daily earnings ------------------------------------------------------- */
@@ -512,10 +350,13 @@ export function createSeedData(now: Date = new Date()): BudgetData {
     expenses: seedExpenses(),
     debts: seedDebts(today),
     ledger: seedLedger(),
+    savings: [],
     checklist: {},
     settings: {
       usdZarRate: SEED_USD_ZAR,
       rateUpdatedAt: iso(today),
+      autoRate: true,
+      rateSource: 'manual',
       displayCurrency: 'USD',
       theme: 'system',
       dataMode: 'sample',
@@ -536,10 +377,13 @@ export function createEmptyData(now: Date = new Date()): BudgetData {
     expenses: [],
     debts: [],
     ledger: [],
+    savings: [],
     checklist: {},
     settings: {
       usdZarRate: SEED_USD_ZAR,
       rateUpdatedAt: iso(today),
+      autoRate: true,
+      rateSource: 'manual',
       displayCurrency: 'USD',
       theme: 'system',
       dataMode: 'live',

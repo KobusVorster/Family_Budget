@@ -38,6 +38,7 @@ export function migrate(input: Partial<BudgetData>): BudgetData {
     expenses: input.expenses ?? [],
     debts: input.debts ?? [],
     ledger: input.ledger ?? [],
+    savings: input.savings ?? [],
     checklist: input.checklist ?? {},
     settings: {
       ...fallback.settings,

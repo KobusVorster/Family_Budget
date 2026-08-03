@@ -12,6 +12,9 @@ const PER_MONTH: Record<Frequency, number> = {
   monthly: 1,
   quarterly: 1 / 3,
   annual: 1 / 12,
+  // A one-off is not part of every month, so it adds nothing to the monthly
+  // figure. The amount is still shown on its own line.
+  once: 0,
 };
 
 export const FREQUENCIES: Frequency[] = [
@@ -20,6 +23,7 @@ export const FREQUENCIES: Frequency[] = [
   'monthly',
   'quarterly',
   'annual',
+  'once',
 ];
 
 export const FREQUENCY_LABEL: Record<Frequency, string> = {
@@ -28,6 +32,7 @@ export const FREQUENCY_LABEL: Record<Frequency, string> = {
   monthly: 'Monthly',
   quarterly: 'Quarterly',
   annual: 'Yearly',
+  once: 'One-off',
 };
 
 /** Normalise any recurring amount to what it costs in a month. */

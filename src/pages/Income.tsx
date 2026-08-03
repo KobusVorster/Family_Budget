@@ -147,16 +147,27 @@ export default function Income() {
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="tnum text-sm font-medium text-ink">
-                          {formatMoney(monthlyValue(source, conversion), currency)}
-                        </p>
-                        {source.currency !== currency && (
-                          <p className="tnum text-xs text-muted">
-                            {formatMoney(
-                              toMonthly(source.amount, source.frequency),
-                              source.currency,
+                        {source.frequency === 'once' ? (
+                          <>
+                            <p className="tnum text-sm font-medium text-ink">
+                              {formatMoney(source.amount, source.currency)}
+                            </p>
+                            <p className="text-xs text-muted">one-off</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="tnum text-sm font-medium text-ink">
+                              {formatMoney(monthlyValue(source, conversion), currency)}
+                            </p>
+                            {source.currency !== currency && (
+                              <p className="tnum text-xs text-muted">
+                                {formatMoney(
+                                  toMonthly(source.amount, source.frequency),
+                                  source.currency,
+                                )}
+                              </p>
                             )}
-                          </p>
+                          </>
                         )}
                       </div>
                       <Button variant="ghost" onClick={() => setEditing(source)}>
@@ -572,11 +583,24 @@ function IncomeEditor({
         </div>
 
         <p className="rounded-lg bg-sunken p-3 text-sm text-ink-2">
-          That is{' '}
-          <strong className="tnum font-semibold text-ink">
-            {formatMoney(toMonthly(draft.amount, draft.frequency), draft.currency)}
-          </strong>{' '}
-          a month.
+          {draft.frequency === 'once' ? (
+            <>
+              A one-off of{' '}
+              <strong className="tnum font-semibold text-ink">
+                {formatMoney(draft.amount, draft.currency)}
+              </strong>
+              . It is kept on the list but adds nothing to the monthly total, because it does not
+              come in every month.
+            </>
+          ) : (
+            <>
+              That is{' '}
+              <strong className="tnum font-semibold text-ink">
+                {formatMoney(toMonthly(draft.amount, draft.frequency), draft.currency)}
+              </strong>{' '}
+              a month.
+            </>
+          )}
         </p>
 
         <label className="flex items-center gap-2 text-sm text-ink-2">

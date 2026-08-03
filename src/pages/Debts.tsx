@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react';
 import { newId, useBudget } from '../store/BudgetContext';
 import type { CurrencyCode, Debt } from '../types';
 import { summariseDebt, summariseDebts, totalDebtRemaining } from '../lib/calc';
+import type { DebtPayment } from '../types';
 import { formatMoney, formatPercent } from '../lib/money';
 import { seriesColor } from '../lib/palette';
 import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
   EstimateMark,
   Field,
@@ -176,12 +178,14 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
   const { data, togglePayment, updateDebt, removeDebt } = useBudget();
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<DebtPayment | null>(null);
   const [draft, setDraft] = useState({ date: new Date().toISOString().slice(0, 10), amount: '' });
 
   const debt = data.debts.find((item) => item.id === debtId);
   if (!debt) return null;
 
-  const summary = summariseDebt(debt, data.debts);
+  const summary = summariseDebt(debt);
   const person = data.people.find((entry) => entry.id === debt.personId);
   const cleared = summary.remaining <= 0;
 
@@ -236,21 +240,13 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
             <dt className="text-muted">Borrowed</dt>
             <dd className="tnum mt-0.5 font-medium">{formatMoney(debt.principal, debt.currency)}</dd>
           </div>
-          {summary.offset > 0 && (
-            <div>
-              <dt className="text-muted">Paid off an older loan</dt>
-              <dd className="tnum mt-0.5 font-medium">
-                {formatMoney(summary.offset, debt.currency)}
-              </dd>
-            </div>
-          )}
           <div>
             <dt className="text-muted">Paid so far</dt>
             <dd className="tnum mt-0.5 font-medium">{formatMoney(summary.paid, debt.currency)}</dd>
           </div>
           <div>
             <dt className="text-muted">Payments left</dt>
-            <dd className="tnum mt-0.5 font-medium">{summary.monthsLeft || '—'}</dd>
+            <dd className="tnum mt-0.5 font-medium">{summary.paymentsLeft || '—'}</dd>
           </div>
           <div>
             <dt className="text-muted">Paid off on</dt>
@@ -260,17 +256,6 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
           </div>
         </dl>
 
-        {summary.offset > 0 && (
-          <p className="mt-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
-            {formatMoney(debt.principal, debt.currency)} was borrowed.{' '}
-            {formatMoney(summary.offset, debt.currency)} of it paid off the older loan, so only{' '}
-            <strong className="tnum font-semibold text-ink">
-              {formatMoney(summary.opening, debt.currency)}
-            </strong>{' '}
-            has to be paid back. This updates by itself as the older loan goes down.
-          </p>
-        )}
-
         <div className="mt-4 flex flex-wrap gap-2">
           <Button onClick={() => setOpen(!open)} aria-expanded={open}>
             {open ? 'Hide payments' : `Payments (${debt.payments.length})`}
@@ -279,15 +264,7 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
           <Button variant="ghost" onClick={() => onEdit(debt)}>
             Edit
           </Button>
-          <Button
-            variant="ghost"
-            className="ml-auto"
-            onClick={() => {
-              if (window.confirm(`Delete "${debt.label}" and all its payments? This cannot be undone.`)) {
-                removeDebt(debt.id);
-              }
-            }}
-          >
+          <Button variant="ghost" className="ml-auto" onClick={() => setConfirmDelete(true)}>
             Delete
           </Button>
         </div>
@@ -301,7 +278,7 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
               body="Press \u201cAdd a payment\u201d, or press Edit to set up a monthly payment plan."
             />
           ) : (
-            <ul className="max-h-80 overflow-y-auto">
+            <ul className="max-h-96 overflow-y-auto">
               {debt.payments.map((payment) => (
                 <li
                   key={payment.id}
@@ -321,11 +298,65 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
                     {formatMoney(payment.amount, debt.currency)}
                   </span>
                   {!payment.paid && <Badge>due</Badge>}
+                  <Button variant="ghost" onClick={() => setEditingPayment(payment)}>
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    aria-label={`Delete the payment on ${formatDate(payment.date)}`}
+                    onClick={() =>
+                      updateDebt(debt.id, {
+                        payments: debt.payments.filter((item) => item.id !== payment.id),
+                      })
+                    }
+                  >
+                    ✕
+                  </Button>
                 </li>
               ))}
             </ul>
           )}
         </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        danger
+        title={`Delete "${debt.label || 'this loan'}"?`}
+        confirmLabel="Delete the loan"
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          removeDebt(debt.id);
+          setConfirmDelete(false);
+        }}
+        body={
+          <>
+            This removes the loan and all {debt.payments.length} of its payments. It cannot be
+            undone.
+          </>
+        }
+      />
+
+      {editingPayment && (
+        <PaymentEditor
+          payment={editingPayment}
+          currency={debt.currency}
+          onClose={() => setEditingPayment(null)}
+          onSave={(next) => {
+            updateDebt(debt.id, {
+              payments: debt.payments
+                .map((item) => (item.id === next.id ? next : item))
+                .sort((a, b) => a.date.localeCompare(b.date)),
+            });
+            setEditingPayment(null);
+          }}
+          onDelete={() => {
+            updateDebt(debt.id, {
+              payments: debt.payments.filter((item) => item.id !== editingPayment.id),
+            });
+            setEditingPayment(null);
+          }}
+        />
       )}
 
       <Modal
@@ -366,6 +397,78 @@ function DebtCard({ debtId, onEdit }: { debtId: string; onEdit: (debt: Debt) => 
         </div>
       </Modal>
     </Card>
+  );
+}
+
+/* -- one payment ---------------------------------------------------------- */
+
+/** Change the date or the amount of a single payment, or remove it. */
+function PaymentEditor({
+  payment,
+  currency,
+  onSave,
+  onDelete,
+  onClose,
+}: {
+  payment: DebtPayment;
+  currency: CurrencyCode;
+  onSave: (next: DebtPayment) => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState(payment);
+  const valid = Number.isFinite(draft.amount) && draft.amount > 0 && Boolean(draft.date);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Edit payment"
+      footer={
+        <>
+          <Button variant="danger" onClick={onDelete} className="mr-auto">
+            Delete
+          </Button>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!valid} onClick={() => onSave(draft)}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Due date">
+          {(id) => (
+            <TextInput
+              id={id}
+              type="date"
+              value={draft.date}
+              onChange={(event) => setDraft({ ...draft, date: event.target.value })}
+            />
+          )}
+        </Field>
+        <Field label={`Amount (${currency})`}>
+          {(id) => (
+            <NumberInput
+              id={id}
+              min="0"
+              autoFocus
+              value={draft.amount}
+              onChange={(event) => setDraft({ ...draft, amount: Number(event.target.value) })}
+            />
+          )}
+        </Field>
+      </div>
+
+      <label className="mt-4 flex items-center gap-2 text-sm text-ink-2">
+        <input
+          type="checkbox"
+          checked={draft.paid}
+          onChange={(event) => setDraft({ ...draft, paid: event.target.checked })}
+        />
+        Already paid
+      </label>
+    </Modal>
   );
 }
 
@@ -500,30 +603,6 @@ function DebtEditor({
             )}
           </Field>
         </div>
-
-        <Field
-          label="Did this loan pay off another loan?"
-          hint="Pick the older loan and the amount left to pay updates by itself."
-        >
-          {(id) => (
-            <Select
-              id={id}
-              value={draft.offsetFromDebtId ?? ''}
-              onChange={(event) =>
-                setDraft({ ...draft, offsetFromDebtId: event.target.value || undefined })
-              }
-            >
-              <option value="">No, this is all new borrowing</option>
-              {data.debts
-                .filter((item) => item.id !== draft.id)
-                .map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-            </Select>
-          )}
-        </Field>
 
         <fieldset className="rounded-lg border border-hairline p-4">
           <legend className="px-1 text-sm font-medium text-ink">

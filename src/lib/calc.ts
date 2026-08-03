@@ -328,55 +328,39 @@ export function categoryBreakdown(
 
 export interface DebtSummary {
   debt: Debt;
-  /** Principal less anything that went straight to clearing an earlier loan. */
-  opening: number;
-  offset: number;
   paid: number;
   remaining: number;
   /** 0-1. */
   progress: number;
   scheduledRemaining: number;
-  /** ISO date of the last scheduled instalment, when there is a plan. */
+  /** ISO date of the last payment still to come, when there is a plan. */
   payoffDate: string | null;
-  monthsLeft: number;
+  paymentsLeft: number;
   nextPayment: { date: string; amount: number } | null;
 }
 
-export function summariseDebt(debt: Debt, all: Debt[]): DebtSummary {
+/** What is left on a loan: what was borrowed, minus every payment ticked off.
+ *  Nothing else is deducted. */
+export function summariseDebt(debt: Debt): DebtSummary {
   const paid = debt.payments
     .filter((payment) => payment.paid)
     .reduce((total, payment) => total + payment.amount, 0);
 
-  // The offset is whatever is still owed on the debt this one consolidated —
-  // read live, so paying down the old loan moves this loan's opening balance
-  // with it.
-  let offset = 0;
-  if (debt.offsetFromDebtId) {
-    const source = all.find((entry) => entry.id === debt.offsetFromDebtId);
-    if (source) {
-      const sourcePaid = source.payments
-        .filter((payment) => payment.paid)
-        .reduce((total, payment) => total + payment.amount, 0);
-      offset = Math.max(0, source.principal - sourcePaid);
-    }
-  }
-
-  const opening = Math.max(0, debt.principal - offset);
-  const remaining = Math.max(0, opening - paid);
-  const outstanding = debt.payments.filter((payment) => !payment.paid);
+  const remaining = Math.max(0, debt.principal - paid);
+  const outstanding = debt.payments
+    .filter((payment) => !payment.paid)
+    .sort((a, b) => a.date.localeCompare(b.date));
   const scheduledRemaining = outstanding.reduce((total, payment) => total + payment.amount, 0);
   const next = outstanding[0] ?? null;
 
   return {
     debt,
-    opening,
-    offset,
     paid,
     remaining,
-    progress: opening > 0 ? Math.min(1, paid / opening) : 1,
+    progress: debt.principal > 0 ? Math.min(1, paid / debt.principal) : 1,
     scheduledRemaining,
     payoffDate: outstanding.length > 0 ? outstanding[outstanding.length - 1].date : null,
-    monthsLeft: outstanding.length,
+    paymentsLeft: outstanding.length,
     nextPayment: next ? { date: next.date, amount: next.amount } : null,
   };
 }
@@ -384,7 +368,7 @@ export function summariseDebt(debt: Debt, all: Debt[]): DebtSummary {
 export function summariseDebts(data: BudgetData, personId?: PersonId): DebtSummary[] {
   return data.debts
     .filter((debt) => personId === undefined || debt.personId === personId)
-    .map((debt) => summariseDebt(debt, data.debts));
+    .map((debt) => summariseDebt(debt));
 }
 
 /** Total still owed, in the reporting currency. */
@@ -397,6 +381,132 @@ export function totalDebtRemaining(
     (total, summary) => total + amountIn(summary.remaining, summary.debt.currency, conversion),
     0,
   );
+}
+
+export interface DebtSplit {
+  total: number;
+  byPerson: Array<{ person: Person; total: number; native: number; currency: CurrencyCode }>;
+}
+
+/** Debt in one currency for the headline, plus each person's share in the
+ *  currency they actually owe it in. */
+export function debtSplit(data: BudgetData, conversion: Conversion): DebtSplit {
+  const byPerson = data.people.map((person) => {
+    const native = summariseDebts(data, person.id).reduce(
+      (total, summary) => total + summary.remaining,
+      0,
+    );
+    return {
+      person,
+      total: amountIn(native, person.currency, conversion),
+      native,
+      currency: person.currency,
+    };
+  });
+
+  return {
+    total: byPerson.reduce((total, entry) => total + entry.total, 0),
+    byPerson,
+  };
+}
+
+/* -- savings -------------------------------------------------------------- */
+
+export interface SavingsSummary {
+  total: number;
+  byPerson: Array<{ person: Person; total: number }>;
+}
+
+export function summariseSavings(data: BudgetData, conversion: Conversion): SavingsSummary {
+  const byPerson = data.people.map((person) => ({
+    person,
+    total: data.savings
+      .filter((entry) => entry.personId === person.id)
+      .reduce((total, entry) => total + amountIn(entry.amount, entry.currency, conversion), 0),
+  }));
+
+  return { total: byPerson.reduce((total, entry) => total + entry.total, 0), byPerson };
+}
+
+/* -- what to pay next ------------------------------------------------------ */
+
+export interface DueItem {
+  id: string;
+  label: string;
+  who: string;
+  /** ISO date it is due. */
+  due: string;
+  /** Days from today. Negative means overdue. */
+  daysAway: number;
+  amount: number;
+  currency: CurrencyCode;
+  /** Where pressing it should take you. */
+  page: 'checklist' | 'debt';
+  kind: 'Bill' | 'Loan';
+}
+
+/** Everything still to be paid, soonest first.
+ *
+ *  Two things land here: bills not yet ticked off for this month, and loan
+ *  payments still due. A bill with no due day set is treated as due at the end
+ *  of the month, so it sorts last rather than disappearing. */
+export function whatToPayNext(
+  data: BudgetData,
+  conversion: Conversion,
+  today: Date = new Date(),
+): DueItem[] {
+  const items: DueItem[] = [];
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const month = monthKey(today);
+  const daysBetween = (iso: string) =>
+    Math.round(
+      (new Date(`${iso}T00:00:00`).getTime() - startOfToday.getTime()) / 86_400_000,
+    );
+
+  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+
+  for (const expense of activeExpenses(data)) {
+    if (data.checklist[checklistKey(expense.id, month)]) continue;
+    if (expense.frequency === 'once') continue;
+
+    const day = Math.min(expense.dueDay ?? lastDayOfMonth, lastDayOfMonth);
+    const due = new Date(today.getFullYear(), today.getMonth(), day);
+    const iso = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(
+      due.getDate(),
+    ).padStart(2, '0')}`;
+
+    items.push({
+      id: expense.id,
+      label: expense.label || 'Untitled',
+      who:
+        expense.owner === 'shared'
+          ? 'Shared'
+          : (data.people.find((person) => person.id === expense.owner)?.name ?? ''),
+      due: iso,
+      daysAway: daysBetween(iso),
+      amount: monthlyValue(expense, conversion),
+      currency: conversion.target,
+      page: 'checklist',
+      kind: 'Bill',
+    });
+  }
+
+  for (const summary of summariseDebts(data)) {
+    if (!summary.nextPayment) continue;
+    items.push({
+      id: summary.debt.id,
+      label: summary.debt.label || 'Untitled loan',
+      who: data.people.find((person) => person.id === summary.debt.personId)?.name ?? '',
+      due: summary.nextPayment.date,
+      daysAway: daysBetween(summary.nextPayment.date),
+      amount: amountIn(summary.nextPayment.amount, summary.debt.currency, conversion),
+      currency: conversion.target,
+      page: 'debt',
+      kind: 'Loan',
+    });
+  }
+
+  return items.sort((a, b) => a.due.localeCompare(b.due));
 }
 
 /* -- ledger --------------------------------------------------------------- */

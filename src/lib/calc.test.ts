@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   amountIn,
   categoryBreakdown,
+  debtSplit,
   gigAverage,
+  summariseSavings,
+  whatToPayNext,
   checklistProgress,
   monthlyBurden,
   monthlyIncome,
@@ -14,7 +17,7 @@ import {
   type Conversion,
 } from './calc';
 import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
-import { LIZ_MONTHLY_SHORTFALL, SEED_USD_ZAR, createSeedData } from '../data/seed';
+import { SEED_USD_ZAR, createSeedData } from '../data/seed';
 import type { BudgetData, Debt, Expense } from '../types';
 
 const RATE = SEED_USD_ZAR;
@@ -23,6 +26,20 @@ const inDollars: Conversion = { usdZarRate: RATE, target: 'USD' };
 
 function seed(): BudgetData {
   return createSeedData(new Date('2026-08-02T00:00:00Z'));
+}
+
+/** Money out ships empty on purpose, so anything about bills builds its own. */
+function bill(over: Partial<Expense> & Pick<Expense, 'id' | 'label' | 'amount'>): Expense {
+  return {
+    category: 'Living',
+    currency: 'ZAR',
+    frequency: 'monthly',
+    owner: 'liz',
+    paidBy: 'liz',
+    active: true,
+    verified: true,
+    ...over,
+  } as Expense;
 }
 
 describe('frequency normalisation', () => {
@@ -64,26 +81,16 @@ describe('the figures that are known to be real', () => {
     expect(monthlyIncome(data, 'liz', inRand)).toBeCloseTo(31954, 2);
   });
 
-  it("keeps Liz's own bills at R34,323.09", () => {
-    const own = data.expenses
-      .filter((expense) => expense.owner === 'liz')
-      .reduce((total, expense) => total + monthlyValue(expense, inRand), 0);
-    expect(own).toBeCloseTo(34323.09, 2);
+  it('ships with no bills at all', () => {
+    // Money out starts empty so nothing has to be deleted before real bills
+    // can go in.
+    expect(data.expenses).toHaveLength(0);
   });
 
-  it('shows Liz short by R2,369.09 a month', () => {
-    const income = monthlyIncome(data, 'liz', inRand);
-    const own = data.expenses
-      .filter((expense) => expense.owner === 'liz')
-      .reduce((total, expense) => total + monthlyValue(expense, inRand), 0);
-    expect(income - own).toBeCloseTo(-LIZ_MONTHLY_SHORTFALL, 2);
-  });
-
-  it('turns the R1,500-a-week Daddy payment into a monthly amount', () => {
-    const daddy = data.expenses.find((expense) => expense.id === 'exp-shared-daddy')!;
-    expect(daddy.amount).toBe(1500);
-    expect(daddy.frequency).toBe('weekly');
-    expect(monthlyValue(daddy, inRand)).toBeCloseTo(6500, 2);
+  it('turns a weekly amount into a monthly one', () => {
+    expect(
+      monthlyValue(bill({ id: 'x', label: 'Daddy', amount: 1500, frequency: 'weekly' }), inRand),
+    ).toBeCloseTo(6500, 2);
   });
 });
 
@@ -180,9 +187,16 @@ describe("Will's daily gig earnings", () => {
 describe('shared expenses and settlement', () => {
   it("counts a shared cost against whoever carries it, not whoever pays it", () => {
     const data = seed();
-    // Split the SA rent evenly while leaving Will paying the whole thing.
-    const rent = data.expenses.find((expense) => expense.id === 'exp-shared-rent')!;
-    rent.split = { will: 0.5, liz: 0.5 };
+    // A shared bill Will pays in full but the two of them split evenly.
+    const rent = bill({
+      id: 'rent',
+      label: 'SA rent',
+      amount: 10000,
+      owner: 'shared',
+      paidBy: 'will',
+      split: { will: 0.5, liz: 0.5 },
+    });
+    data.expenses = [rent];
 
     const settlement = settleShared(data, inRand);
     const will = settlement.lines.find((line) => line.person.id === 'will')!;
@@ -198,93 +212,203 @@ describe('shared expenses and settlement', () => {
 
   it('reports nothing to settle when everyone pays exactly what they carry', () => {
     const data = seed();
-    // The seed has Will carrying and paying all of the shared block.
+    data.expenses = [
+      bill({
+        id: 'rent',
+        label: 'SA rent',
+        amount: 10000,
+        owner: 'shared',
+        paidBy: 'will',
+        split: { will: 1, liz: 0 },
+      }),
+    ];
     expect(settleShared(data, inRand).transfer).toBeNull();
   });
 
   it("adds a person's share of shared costs to their own burden", () => {
     const data = seed();
-    const personalOnly = data.expenses
-      .filter((expense) => expense.owner === 'will')
-      .reduce((total, expense) => total + monthlyValue(expense, inDollars), 0);
-
-    expect(monthlyBurden(data, 'will', inDollars)).toBeGreaterThan(personalOnly);
+    data.expenses = [
+      bill({ id: 'own', label: 'Groceries', amount: 100, currency: 'USD', owner: 'will', paidBy: 'will' }),
+      bill({
+        id: 'shared',
+        label: 'SA rent',
+        amount: 200,
+        currency: 'USD',
+        owner: 'shared',
+        paidBy: 'will',
+        split: { will: 0.5, liz: 0.5 },
+      }),
+    ];
+    // 100 of their own, plus half of the 200 shared.
+    expect(monthlyBurden(data, 'will', inDollars)).toBeCloseTo(200, 2);
+    expect(monthlyBurden(data, 'liz', inDollars)).toBeCloseTo(100, 2);
   });
 });
 
-describe('consolidated debts', () => {
-  const base: Debt[] = [
-    {
-      id: 'old',
-      label: 'First loan',
-      personId: 'liz',
-      lender: 'Employer',
-      currency: 'ZAR',
-      principal: 37500,
-      payments: [
-        { id: 'a', date: '2026-01-01', amount: 22500, paid: true },
-        { id: 'b', date: '2026-02-01', amount: 5000, paid: false },
-      ],
-      verified: true,
-    },
-    {
-      id: 'new',
-      label: 'Second loan',
-      personId: 'liz',
-      lender: 'Employer',
-      currency: 'ZAR',
-      principal: 230000,
-      offsetFromDebtId: 'old',
-      payments: [],
-      verified: true,
-    },
-  ];
+describe('loans', () => {
+  const loan: Debt = {
+    id: 'loan',
+    label: 'Work loan',
+    personId: 'liz',
+    lender: 'Employer',
+    currency: 'ZAR',
+    principal: 230000,
+    payments: [
+      { id: 'a', date: '2026-02-01', amount: 5000, paid: true },
+      { id: 'b', date: '2026-03-01', amount: 5000, paid: false },
+      { id: 'c', date: '2026-04-01', amount: 5000, paid: false },
+    ],
+    verified: true,
+  };
 
-  it("opens the new loan at principal minus the old loan's remaining balance", () => {
-    const summary = summariseDebt(base[1], base);
-    expect(summary.offset).toBe(15000);
-    expect(summary.opening).toBe(215000);
-    expect(summary.remaining).toBe(215000);
-  });
-
-  it('moves with the old loan instead of holding a stale number', () => {
-    // A fixed 15,000 here would go stale the moment the first loan is paid
-    // down, leaving the second loan's balance wrong.
-    const paidDown = base.map((debt) =>
-      debt.id === 'old'
-        ? { ...debt, payments: debt.payments.map((payment) => ({ ...payment, paid: true })) }
-        : debt,
-    );
-    const summary = summariseDebt(paidDown[1], paidDown);
-    expect(summary.offset).toBe(10000);
-    expect(summary.opening).toBe(220000);
+  it('takes off only what has actually been paid', () => {
+    // Nothing is deducted behind the scenes — money that went to another loan
+    // is recorded as a payment line like any other.
+    const summary = summariseDebt(loan);
+    expect(summary.paid).toBe(5000);
+    expect(summary.remaining).toBe(225000);
   });
 
   it('never reports a negative balance when overpaid', () => {
-    const overpaid: Debt = {
-      ...base[0],
-      offsetFromDebtId: undefined,
-      payments: [{ id: 'x', date: '2026-01-01', amount: 99999, paid: true }],
-    };
-    const summary = summariseDebt(overpaid, [overpaid]);
+    const summary = summariseDebt({
+      ...loan,
+      payments: [{ id: 'x', date: '2026-01-01', amount: 999999, paid: true }],
+    });
     expect(summary.remaining).toBe(0);
     expect(summary.progress).toBe(1);
   });
 
-  it('reads the payoff date off the last unpaid instalment', () => {
-    const scheduled: Debt = {
-      ...base[0],
-      offsetFromDebtId: undefined,
+  it('reads the payoff date off the last payment still due', () => {
+    const summary = summariseDebt(loan);
+    expect(summary.payoffDate).toBe('2026-04-01');
+    expect(summary.paymentsLeft).toBe(2);
+    expect(summary.nextPayment).toEqual({ date: '2026-03-01', amount: 5000 });
+  });
+
+  it('sorts the next payment by date, not by list order', () => {
+    const jumbled = summariseDebt({
+      ...loan,
       payments: [
-        { id: 'a', date: '2026-01-01', amount: 1000, paid: true },
-        { id: 'b', date: '2026-02-01', amount: 1000, paid: false },
-        { id: 'c', date: '2026-03-01', amount: 1000, paid: false },
+        { id: 'late', date: '2026-09-01', amount: 5000, paid: false },
+        { id: 'early', date: '2026-03-01', amount: 5000, paid: false },
       ],
-    };
-    const summary = summariseDebt(scheduled, [scheduled]);
-    expect(summary.payoffDate).toBe('2026-03-01');
-    expect(summary.monthsLeft).toBe(2);
-    expect(summary.nextPayment).toEqual({ date: '2026-02-01', amount: 1000 });
+    });
+    expect(jumbled.nextPayment?.date).toBe('2026-03-01');
+    expect(jumbled.payoffDate).toBe('2026-09-01');
+  });
+});
+
+describe('what to pay next', () => {
+  const today = new Date('2026-08-15T00:00:00');
+
+  function withBill(dueDay: number | undefined, id = 'bill'): BudgetData {
+    const data = seed();
+    data.debts = [];
+    data.expenses = [
+      {
+        id,
+        label: 'Rent',
+        category: 'Housing',
+        amount: 1000,
+        currency: 'USD',
+        frequency: 'monthly',
+        owner: 'will',
+        paidBy: 'will',
+        dueDay,
+        active: true,
+        verified: true,
+      },
+    ];
+    return data;
+  }
+
+  it('puts the soonest thing first', () => {
+    const data = withBill(20);
+    data.expenses.push({ ...data.expenses[0], id: 'earlier', label: 'Car', dueDay: 17 });
+    const items = whatToPayNext(data, inDollars, today);
+    expect(items.map((item) => item.label)).toEqual(['Car', 'Rent']);
+  });
+
+  it('marks something already past its day as late', () => {
+    const items = whatToPayNext(withBill(10), inDollars, today);
+    expect(items[0].daysAway).toBe(-5);
+  });
+
+  it('sorts a bill with no due day to the end of the month rather than dropping it', () => {
+    const items = whatToPayNext(withBill(undefined), inDollars, today);
+    expect(items).toHaveLength(1);
+    expect(items[0].due).toBe('2026-08-31');
+  });
+
+  it('drops a bill once it is ticked off for the month', () => {
+    const data = withBill(20);
+    data.checklist['bill:2026-08'] = true;
+    expect(whatToPayNext(data, inDollars, today)).toHaveLength(0);
+  });
+
+  it('includes loan payments alongside bills', () => {
+    const data = withBill(20);
+    data.debts = [
+      {
+        id: 'loan',
+        label: 'Car loan',
+        personId: 'will',
+        lender: 'Bank',
+        currency: 'USD',
+        principal: 5000,
+        payments: [{ id: 'p', date: '2026-08-16', amount: 400, paid: false }],
+        verified: true,
+      },
+    ];
+    const items = whatToPayNext(data, inDollars, today);
+    expect(items.map((item) => item.kind)).toEqual(['Loan', 'Bill']);
+  });
+});
+
+describe('savings and debt split', () => {
+  it('adds savings up per person and converts them', () => {
+    const data = seed();
+    data.savings = [
+      { id: 's1', personId: 'will', label: 'Emergency', amount: 1000, currency: 'USD' },
+      { id: 's2', personId: 'liz', label: 'Holiday', amount: 16461.2, currency: 'ZAR' },
+    ];
+    const summary = summariseSavings(data, inDollars);
+    expect(summary.byPerson.find((entry) => entry.person.id === 'will')!.total).toBeCloseTo(1000, 2);
+    expect(summary.byPerson.find((entry) => entry.person.id === 'liz')!.total).toBeCloseTo(1000, 2);
+    expect(summary.total).toBeCloseTo(2000, 2);
+  });
+
+  it('keeps each side of the debt in the currency it is owed in', () => {
+    const data = seed();
+    const split = debtSplit(data, inDollars);
+    const liz = split.byPerson.find((entry) => entry.person.id === 'liz')!;
+    const will = split.byPerson.find((entry) => entry.person.id === 'will')!;
+    expect(liz.currency).toBe('ZAR');
+    expect(will.currency).toBe('USD');
+    expect(split.total).toBeCloseTo(liz.total + will.total, 2);
+  });
+});
+
+describe('one-off amounts', () => {
+  it('adds nothing to a monthly total', () => {
+    expect(toMonthly(500, 'once')).toBe(0);
+  });
+
+  it('leaves the recurring total alone when a one-off is added', () => {
+    const data = seed();
+    const before = monthlyIncome(data, 'will', inDollars);
+    data.income.push({
+      id: 'bonus',
+      personId: 'will',
+      label: 'Tax refund',
+      amount: 900,
+      currency: 'USD',
+      frequency: 'once',
+      kind: 'other',
+      active: true,
+      verified: true,
+    });
+    expect(monthlyIncome(data, 'will', inDollars)).toBeCloseTo(before, 2);
   });
 });
 
@@ -306,16 +430,21 @@ describe('household roll-up', () => {
 
   it('ignores paused lines', () => {
     const data = seed();
-    const before = summariseHousehold(data, inRand).expenses;
+    data.expenses = [bill({ id: 'a', label: 'Gym', amount: 500 })];
+    expect(summariseHousehold(data, inRand).expenses).toBeCloseTo(500, 2);
     data.expenses[0].active = false;
-    const after = summariseHousehold(data, inRand).expenses;
-    expect(after).toBeLessThan(before);
+    expect(summariseHousehold(data, inRand).expenses).toBe(0);
   });
 });
 
 describe('category breakdown', () => {
   it('sorts biggest first and shares sum to one', () => {
     const data = seed();
+    data.expenses = [
+      bill({ id: 'a', label: 'Rent', amount: 5000, category: 'Housing' }),
+      bill({ id: 'b', label: 'Car', amount: 3000, category: 'Transport' }),
+      bill({ id: 'c', label: 'Food', amount: 1000, category: 'Living' }),
+    ];
     const slices = categoryBreakdown(data.expenses, inRand);
     expect(slices.length).toBeGreaterThan(1);
     for (let i = 1; i < slices.length; i += 1) {
@@ -374,6 +503,10 @@ describe('the daily ledger', () => {
 describe('the monthly checklist', () => {
   it('counts what is left to pay, not what has been', () => {
     const data = seed();
+    data.expenses = [
+      bill({ id: 'a', label: 'Rent', amount: 5000 }),
+      bill({ id: 'b', label: 'Car', amount: 3000 }),
+    ];
     const month = '2026-08';
     const before = checklistProgress(data, month, inRand);
     expect(before.paid).toBe(0);

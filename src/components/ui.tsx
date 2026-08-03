@@ -108,6 +108,7 @@ export function StatTile({
   detail,
   tone,
   accent,
+  href,
   children,
 }: {
   label: string;
@@ -117,10 +118,13 @@ export function StatTile({
   /** A colour key beside the label — identity comes from the mark, never from
    *  colouring the text itself. */
   accent?: string;
+  /** Where this figure comes from. Set it and the whole tile becomes a link to
+   *  the page holding the numbers behind it. */
+  href?: string;
   children?: ReactNode;
 }) {
-  return (
-    <div className="card flex flex-col gap-1 p-4 sm:p-5">
+  const body = (
+    <>
       <div className="flex items-center gap-2">
         {accent && (
           <span
@@ -130,6 +134,11 @@ export function StatTile({
           />
         )}
         <p className="text-sm font-medium text-ink-2">{label}</p>
+        {href && (
+          <span aria-hidden className="ml-auto text-muted transition group-hover:text-ink">
+            ›
+          </span>
+        )}
       </div>
       <p
         className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]"
@@ -139,8 +148,21 @@ export function StatTile({
       </p>
       {detail && <div className="text-sm text-ink-2">{detail}</div>}
       {children}
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        className="card group flex flex-col gap-1 p-4 transition hover:bg-sunken sm:p-5"
+      >
+        {body}
+      </a>
+    );
+  }
+
+  return <div className="card flex flex-col gap-1 p-4 sm:p-5">{body}</div>;
 }
 
 /** A single ratio against a limit. */
@@ -403,6 +425,48 @@ export function Modal({
         )}
       </div>
     </div>
+  );
+}
+
+/** An in-app "are you sure?".
+ *
+ *  Never use `window.confirm` for this. When the app is embedded in a sandboxed
+ *  frame the browser ignores that call and returns false without showing
+ *  anything, so the button silently does nothing — which is exactly how the
+ *  reset buttons appeared to be broken. */
+export function ConfirmDialog({
+  open,
+  title,
+  body,
+  confirmLabel,
+  danger = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  body: ReactNode;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      onClose={onCancel}
+      title={title}
+      footer={
+        <>
+          <Button onClick={onCancel}>Cancel</Button>
+          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <div className="text-sm text-ink-2">{body}</div>
+    </Modal>
   );
 }
 
