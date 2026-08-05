@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType, type SVGProps } from 'react';
 import { useBudget } from './store/BudgetContext';
+import { useAuth } from './store/AuthContext';
 import { reviewQueue } from './lib/calc';
 import { SegmentedControl } from './components/ui';
 import {
@@ -20,6 +21,7 @@ import Shared from './pages/Shared';
 import Debts from './pages/Debts';
 import Checklist from './pages/Checklist';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
 
 interface Route {
   id: string;
@@ -56,7 +58,22 @@ function useHashRoute(): [Route, (id: string) => void] {
 }
 
 export default function App() {
-  const { data, updateSettings } = useBudget();
+  const auth = useAuth();
+
+  if (auth.state === 'loading') {
+    return (
+      <div className="flex min-h-full items-center justify-center bg-plane text-sm text-ink-2">
+        Loading…
+      </div>
+    );
+  }
+  if (auth.state === 'signed-out') return <Login />;
+  return <Budget />;
+}
+
+function Budget() {
+  const { data, updateSettings, sync, syncError, retrySync } = useBudget();
+  const auth = useAuth();
   const [route, navigate] = useHashRoute();
   const Page = route.component;
 
@@ -85,7 +102,7 @@ export default function App() {
         <div className="mb-6 px-3">
           <p className="text-sm font-semibold tracking-tight">Family Budget</p>
           <p className="mt-0.5 text-xs text-muted">
-            {data.people.map((person) => person.name).join(' & ')}
+            {auth.email ?? data.people.map((person) => person.name).join(' & ')}
           </p>
         </div>
 
@@ -149,8 +166,36 @@ export default function App() {
             >
               {isDark ? <IconSun /> : <IconMoon />}
             </button>
+            {auth.state === 'signed-in' && (
+              <button
+                type="button"
+                onClick={() => void auth.signOut()}
+                className="rounded-lg border border-hairline px-2.5 py-2 text-sm font-medium text-ink-2 transition hover:bg-sunken hover:text-ink"
+              >
+                Sign out
+              </button>
+            )}
           </div>
         </header>
+
+        {sync === 'error' && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-3 border-b border-hairline px-4 py-2.5 text-sm sm:px-6"
+            style={{ background: 'var(--color-sunken)' }}
+          >
+            <span className="text-ink">
+              Your last change did not save. {syncError ?? ''}
+            </span>
+            <button
+              type="button"
+              onClick={retrySync}
+              className="rounded-lg border border-hairline px-2.5 py-1 text-xs font-medium text-ink-2 transition hover:bg-surface hover:text-ink"
+            >
+              Try again
+            </button>
+          </div>
+        )}
 
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-28 sm:px-6 lg:pb-12">
           <Page key={route.id} />

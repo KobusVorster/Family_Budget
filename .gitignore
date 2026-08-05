@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-auth/
 .vite/
 *.local
 .DS_Store

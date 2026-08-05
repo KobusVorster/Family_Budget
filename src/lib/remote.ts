@@ -1,0 +1,409 @@
+import type {
+  BudgetData,
+  Debt,
+  DebtPayment,
+  Expense,
+  IncomeSource,
+  LedgerEntry,
+  Person,
+  Saving,
+  Settings,
+} from '../types';
+import { supabase } from './supabase';
+
+/* Reading and writing the shared budget.
+ *
+ * Every bill, loan and payment is its own row. The alternative — keeping the
+ * whole budget as one lump of text — is less code, but with two people editing
+ * it means whoever saves last silently wipes the other's change. For money
+ * that is not acceptable, so each change touches only its own row. */
+
+/** Which household the signed-in person belongs to, creating one the first
+ *  time they log in. */
+export async function ensureHousehold(): Promise<string> {
+  const db = supabase();
+  const { data: user } = await db.auth.getUser();
+  if (!user.user) throw new Error('Not signed in.');
+
+  const existing = await db
+    .from('household_members')
+    .select('household_id')
+    .eq('user_id', user.user.id)
+    .limit(1)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) return existing.data.household_id as string;
+
+  const created = await db.from('households').insert({ name: 'Our budget' }).select('id').single();
+  if (created.error) throw created.error;
+
+  const joined = await db
+    .from('household_members')
+    .insert({ household_id: created.data.id, user_id: user.user.id, role: 'owner' });
+  if (joined.error) throw joined.error;
+
+  return created.data.id as string;
+}
+
+/** Let a second person into an existing household. Run by whoever is already
+ *  in it, using the other person's user id. */
+export async function addMember(householdId: string, userId: string): Promise<void> {
+  const db = supabase();
+  const { error } = await db
+    .from('household_members')
+    .upsert({ household_id: householdId, user_id: userId, role: 'member' });
+  if (error) throw error;
+}
+
+/* -- reading --------------------------------------------------------------- */
+
+type Row = Record<string, unknown>;
+
+const num = (value: unknown, fallback = 0): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+/** Pull the whole budget down in one go. Small enough that paging would be
+ *  more code than it saves. */
+export async function fetchBudget(householdId: string): Promise<Partial<BudgetData>> {
+  const db = supabase();
+  const table = (name: string) => db.from(name).select('*').eq('household_id', householdId);
+
+  const [people, income, expenses, debts, payments, ledger, savings, checklist, settings] =
+    await Promise.all([
+      table('people'),
+      table('income'),
+      table('expenses'),
+      table('debts'),
+      table('debt_payments'),
+      table('ledger'),
+      table('savings'),
+      table('checklist'),
+      table('settings').maybeSingle(),
+    ]);
+
+  for (const result of [people, income, expenses, debts, payments, ledger, savings, checklist]) {
+    if (result.error) throw result.error;
+  }
+  if (settings.error) throw settings.error;
+
+  const paymentsByDebt = new Map<string, DebtPayment[]>();
+  for (const row of (payments.data ?? []) as Row[]) {
+    const list = paymentsByDebt.get(String(row.debt_id)) ?? [];
+    list.push({
+      id: String(row.id),
+      date: String(row.date),
+      amount: num(row.amount),
+      paid: Boolean(row.paid),
+      note: (row.note as string) ?? undefined,
+    });
+    paymentsByDebt.set(String(row.debt_id), list);
+  }
+
+  const ticked: Record<string, boolean> = {};
+  for (const row of (checklist.data ?? []) as Row[]) {
+    if (row.paid) ticked[String(row.key)] = true;
+  }
+
+  const settingsRow = settings.data as Row | null;
+
+  return {
+    people: ((people.data ?? []) as Row[]).map(
+      (row): Person => ({
+        id: String(row.id),
+        name: String(row.name),
+        fullName: String(row.full_name),
+        currency: row.currency as Person['currency'],
+        country: String(row.country ?? ''),
+        slot: num(row.slot, 1),
+        initials: String(row.initials ?? ''),
+      }),
+    ),
+    income: ((income.data ?? []) as Row[]).map(
+      (row): IncomeSource => ({
+        id: String(row.id),
+        personId: String(row.person_id),
+        label: String(row.label ?? ''),
+        amount: num(row.amount),
+        currency: row.currency as IncomeSource['currency'],
+        frequency: row.frequency as IncomeSource['frequency'],
+        kind: row.kind as IncomeSource['kind'],
+        active: Boolean(row.active),
+        verified: Boolean(row.verified),
+        note: (row.note as string) ?? undefined,
+      }),
+    ),
+    expenses: ((expenses.data ?? []) as Row[]).map(
+      (row): Expense => ({
+        id: String(row.id),
+        label: String(row.label ?? ''),
+        category: row.category as Expense['category'],
+        amount: num(row.amount),
+        currency: row.currency as Expense['currency'],
+        frequency: row.frequency as Expense['frequency'],
+        owner: String(row.owner),
+        paidBy: String(row.paid_by),
+        split: (row.split as Expense['split']) ?? undefined,
+        dueDay: row.due_day === null ? undefined : num(row.due_day, 1),
+        account: (row.account as string) ?? undefined,
+        active: Boolean(row.active),
+        verified: Boolean(row.verified),
+        note: (row.note as string) ?? undefined,
+      }),
+    ),
+    debts: ((debts.data ?? []) as Row[]).map(
+      (row): Debt => ({
+        id: String(row.id),
+        label: String(row.label ?? ''),
+        personId: String(row.person_id),
+        lender: String(row.lender ?? ''),
+        currency: row.currency as Debt['currency'],
+        principal: num(row.principal),
+        payments: (paymentsByDebt.get(String(row.id)) ?? []).sort((a, b) =>
+          a.date.localeCompare(b.date),
+        ),
+        verified: Boolean(row.verified),
+        note: (row.note as string) ?? undefined,
+      }),
+    ),
+    ledger: ((ledger.data ?? []) as Row[]).map(
+      (row): LedgerEntry => ({
+        id: String(row.id),
+        date: String(row.date),
+        personId: String(row.person_id),
+        label: String(row.label ?? ''),
+        amount: num(row.amount),
+        currency: row.currency as LedgerEntry['currency'],
+        type: row.type as LedgerEntry['type'],
+      }),
+    ),
+    savings: ((savings.data ?? []) as Row[]).map(
+      (row): Saving => ({
+        id: String(row.id),
+        personId: String(row.person_id),
+        label: String(row.label ?? ''),
+        amount: num(row.amount),
+        currency: row.currency as Saving['currency'],
+        note: (row.note as string) ?? undefined,
+      }),
+    ),
+    checklist: ticked,
+    settings: settingsRow
+      ? ({
+          usdZarRate: num(settingsRow.usd_zar_rate, 16.4612),
+          rateUpdatedAt: String(settingsRow.rate_updated_at),
+          autoRate: Boolean(settingsRow.auto_rate),
+          rateSource: settingsRow.rate_source as Settings['rateSource'],
+          dataMode: settingsRow.data_mode as Settings['dataMode'],
+          saTotalRent: num(settingsRow.sa_total_rent),
+          saRentFromDaddy: num(settingsRow.sa_rent_from_daddy),
+          saRentExpenseId: String(settingsRow.sa_rent_expense_id),
+        } as Settings)
+      : undefined,
+  };
+}
+
+/* -- writing --------------------------------------------------------------- */
+
+const withHousehold = <T extends object>(householdId: string, row: T) => ({
+  ...row,
+  household_id: householdId,
+});
+
+export const rowFor = {
+  person: (p: Person) => ({
+    id: p.id,
+    name: p.name,
+    full_name: p.fullName,
+    currency: p.currency,
+    country: p.country,
+    slot: p.slot,
+    initials: p.initials,
+  }),
+  income: (i: IncomeSource) => ({
+    id: i.id,
+    person_id: i.personId,
+    label: i.label,
+    amount: i.amount,
+    currency: i.currency,
+    frequency: i.frequency,
+    kind: i.kind,
+    active: i.active,
+    verified: i.verified,
+    note: i.note ?? null,
+  }),
+  expense: (e: Expense) => ({
+    id: e.id,
+    label: e.label,
+    category: e.category,
+    amount: e.amount,
+    currency: e.currency,
+    frequency: e.frequency,
+    owner: e.owner,
+    paid_by: e.paidBy,
+    split: e.split ?? null,
+    due_day: e.dueDay ?? null,
+    account: e.account ?? null,
+    active: e.active,
+    verified: e.verified,
+    note: e.note ?? null,
+  }),
+  debt: (d: Debt) => ({
+    id: d.id,
+    label: d.label,
+    person_id: d.personId,
+    lender: d.lender,
+    currency: d.currency,
+    principal: d.principal,
+    verified: d.verified,
+    note: d.note ?? null,
+  }),
+  payment: (debtId: string, p: DebtPayment) => ({
+    id: p.id,
+    debt_id: debtId,
+    date: p.date,
+    amount: p.amount,
+    paid: p.paid,
+    note: p.note ?? null,
+  }),
+  ledger: (l: LedgerEntry) => ({
+    id: l.id,
+    date: l.date,
+    person_id: l.personId,
+    label: l.label,
+    amount: l.amount,
+    currency: l.currency,
+    type: l.type,
+  }),
+  saving: (s: Saving) => ({
+    id: s.id,
+    person_id: s.personId,
+    label: s.label,
+    amount: s.amount,
+    currency: s.currency,
+    note: s.note ?? null,
+  }),
+  settings: (s: Settings) => ({
+    usd_zar_rate: s.usdZarRate,
+    rate_updated_at: s.rateUpdatedAt,
+    auto_rate: s.autoRate,
+    rate_source: s.rateSource,
+    data_mode: s.dataMode,
+    sa_total_rent: s.saTotalRent,
+    sa_rent_from_daddy: s.saRentFromDaddy,
+    sa_rent_expense_id: s.saRentExpenseId,
+  }),
+};
+
+export async function upsert(householdId: string, table: string, row: object): Promise<void> {
+  const { error } = await supabase()
+    .from(table)
+    .upsert(withHousehold(householdId, row), { onConflict: 'household_id,id' });
+  if (error) throw error;
+}
+
+export async function remove(householdId: string, table: string, id: string): Promise<void> {
+  const { error } = await supabase()
+    .from(table)
+    .delete()
+    .eq('household_id', householdId)
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function saveSettings(householdId: string, settings: Settings): Promise<void> {
+  const { error } = await supabase()
+    .from('settings')
+    .upsert({ household_id: householdId, ...rowFor.settings(settings) }, { onConflict: 'household_id' });
+  if (error) throw error;
+}
+
+export async function setChecklist(
+  householdId: string,
+  key: string,
+  paid: boolean,
+): Promise<void> {
+  const db = supabase();
+  // Only ticks are stored; unticking removes the row, so the table stays small.
+  const { error } = paid
+    ? await db.from('checklist').upsert({ household_id: householdId, key, paid: true })
+    : await db.from('checklist').delete().eq('household_id', householdId).eq('key', key);
+  if (error) throw error;
+}
+
+/** Replace everything in the household with the budget given. Used to move an
+ *  existing budget into the cloud the first time, and by "Start over". */
+export async function replaceBudget(householdId: string, data: BudgetData): Promise<void> {
+  const db = supabase();
+
+  for (const table of [
+    'debt_payments',
+    'income',
+    'expenses',
+    'debts',
+    'ledger',
+    'savings',
+    'checklist',
+    'people',
+  ]) {
+    const { error } = await db.from(table).delete().eq('household_id', householdId);
+    if (error) throw error;
+  }
+
+  const push = async (table: string, rows: object[]) => {
+    if (rows.length === 0) return;
+    const { error } = await db
+      .from(table)
+      .insert(rows.map((row) => withHousehold(householdId, row)));
+    if (error) throw error;
+  };
+
+  await push('people', data.people.map(rowFor.person));
+  await push('income', data.income.map(rowFor.income));
+  await push('expenses', data.expenses.map(rowFor.expense));
+  await push('debts', data.debts.map(rowFor.debt));
+  await push(
+    'debt_payments',
+    data.debts.flatMap((debt) => debt.payments.map((payment) => rowFor.payment(debt.id, payment))),
+  );
+  await push('ledger', data.ledger.map(rowFor.ledger));
+  await push('savings', data.savings.map(rowFor.saving));
+  await push(
+    'checklist',
+    Object.entries(data.checklist)
+      .filter(([, paid]) => paid)
+      .map(([key]) => ({ key, paid: true })),
+  );
+
+  await saveSettings(householdId, data.settings);
+}
+
+/** Call `onChange` whenever the other person edits anything. */
+export function watchBudget(householdId: string, onChange: () => void): () => void {
+  const db = supabase();
+  const channel = db.channel(`budget:${householdId}`);
+
+  for (const table of [
+    'people',
+    'income',
+    'expenses',
+    'debts',
+    'debt_payments',
+    'ledger',
+    'savings',
+    'checklist',
+    'settings',
+  ]) {
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table, filter: `household_id=eq.${householdId}` },
+      onChange,
+    );
+  }
+
+  channel.subscribe();
+  return () => {
+    void db.removeChannel(channel);
+  };
+}

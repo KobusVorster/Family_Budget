@@ -1,0 +1,13 @@
+{
+  "name": "Family Budget",
+  "short_name": "Budget",
+  "description": "Shared family budget for Will and Liz.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f9f9f7",
+  "theme_color": "#f9f9f7",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

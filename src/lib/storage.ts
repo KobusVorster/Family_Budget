@@ -2,7 +2,36 @@ import type { BudgetData } from '../types';
 import { DATA_VERSION, createSeedData } from '../data/seed';
 
 const KEY = 'family-budget:data';
+const PREFS_KEY = 'family-budget:prefs';
 export const THEME_KEY = 'family-budget:theme';
+
+/** Settings that belong to this device rather than the household — which
+ *  currency to show totals in, and light or dark. Kept separate so signing in
+ *  on a phone does not drag the other person's preferences along. */
+export interface LocalPrefs {
+  displayCurrency?: BudgetData['settings']['displayCurrency'];
+  theme?: BudgetData['settings']['theme'];
+}
+
+export function loadLocalPrefs(): LocalPrefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    return raw ? (JSON.parse(raw) as LocalPrefs) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveLocalPrefs(settings: BudgetData['settings']): void {
+  try {
+    localStorage.setItem(
+      PREFS_KEY,
+      JSON.stringify({ displayCurrency: settings.displayCurrency, theme: settings.theme }),
+    );
+  } catch {
+    // Private browsing. The app still works, the preference just will not stick.
+  }
+}
 
 /** Load the saved budget, falling back to the seed on anything unreadable.
  *  A corrupted blob should never leave the user staring at a blank screen. */

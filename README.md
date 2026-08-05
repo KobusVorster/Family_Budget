@@ -57,17 +57,23 @@ one owes the other, worked out on the Shared page.
 rent split is derived from the full rent and Daddy's share. A loan that paid off
 an older loan reads that loan's balance live. Neither can drift out of step.
 
-## Saving and sharing
+## Two ways to run it
 
-Data is stored in the browser under `family-budget:data` and is not sent
-anywhere. Two people cannot edit the same copy.
+**Online, with logins** — the real setup. Supabase holds the data and the two
+accounts, Cloudflare Pages serves the site. Both of you sign in, both see the
+same budget, and a change one of you makes shows up for the other within a few
+seconds. Step-by-step instructions are in **[DEPLOY.md](DEPLOY.md)**.
 
-To share changes: **Save a copy** in Settings, send the file, and the other
-person uses **Open a saved copy**.
+**On its own, with no account** — if `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY` are not set, the app skips the login entirely and
+keeps everything in that browser's storage. Handy for local development and for
+trying things without touching the live data.
 
-If shared editing matters more than having no server, `lib/storage.ts` is the
-one file a backend would replace — the rest of the app talks to the store, not
-to storage.
+Either way **Save a copy** and **Open a saved copy** in Settings still work, as
+your own backup and as the way to move an existing budget into the cloud.
+
+Which currency totals are shown in, and light or dark, are per-device — Liz can
+read in rand on a dark screen while you read in dollars on a light one.
 
 ## Code layout
 
@@ -77,9 +83,13 @@ src/
   data/seed.ts          the numbers a fresh install starts with
   lib/money.ts          currency and frequency conversion, formatting
   lib/calc.ts           every worked-out figure — totals, who owes who, payoff
-  lib/calc.test.ts      28 tests
+  lib/calc.test.ts      54 tests
   lib/palette.ts        which colour belongs to which person or category
+  lib/supabase.ts       the database connection
+  lib/remote.ts         reading and writing the shared budget
+  store/AuthContext     signing in and out
   store/BudgetContext   state, saving, upgrading old saves
+  supabase/schema.sql   the database, run once in Supabase
   components/           buttons, cards, charts, icons
   pages/                one file per page
 ```

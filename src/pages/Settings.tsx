@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useBudget } from '../store/BudgetContext';
+import { useAuth } from '../store/AuthContext';
 import { reviewQueue } from '../lib/calc';
 import { SEED_USD_ZAR } from '../data/seed';
 import { exportFile, importFile } from '../lib/storage';
@@ -23,6 +24,8 @@ export default function Settings() {
   const { data, updateSettings, replaceAll, resetToSeed, clearAll, refreshRate, rateStatus } =
     useBudget();
   const [confirming, setConfirming] = useState<'reset' | 'clear' | null>(null);
+  const auth = useAuth();
+  const [copied, setCopied] = useState(false);
   const [rateDraft, setRateDraft] = useState(data.settings.usdZarRate);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -256,8 +259,60 @@ export default function Settings() {
 
       <Card className="mt-4">
         <CardHeader
+          title="Your login"
+          subtitle={
+            auth.state === 'signed-in'
+              ? 'Signed in. Your budget is saved online and shared with Liz.'
+              : 'Not signed in. Your budget is saved in this browser only.'
+          }
+        />
+        {auth.state === 'signed-in' ? (
+          <>
+            <dl className="grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-muted">Signed in as</dt>
+                <dd className="mt-0.5 font-medium break-all">{auth.email}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">Your user ID</dt>
+                <dd className="mt-0.5 flex items-center gap-2">
+                  <code className="truncate text-xs">{auth.userId}</code>
+                  <Button
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(auth.userId ?? '');
+                      setCopied(true);
+                      window.setTimeout(() => setCopied(false), 2000);
+                    }}
+                  >
+                    {copied ? 'Copied' : 'Copy'}
+                  </Button>
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
+              To let Liz in: she creates her own login first, then sends you her user ID from this
+              page. See DEPLOY.md for the one line to run.
+            </p>
+            <Button className="mt-4" onClick={() => void auth.signOut()}>
+              Sign out
+            </Button>
+          </>
+        ) : (
+          <p className="text-sm text-ink-2">
+            This copy is running without a login, so everything stays in this browser. Use{' '}
+            <strong className="text-ink">Save a copy</strong> below to keep a backup.
+          </p>
+        )}
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader
           title="Your data"
-          subtitle="Your data is saved in this browser only. Nothing is sent anywhere."
+          subtitle={
+            auth.state === 'signed-in'
+              ? 'Saved online. Save a copy any time you want your own backup.'
+              : 'Saved in this browser only. Nothing is sent anywhere.'
+          }
         />
 
         <div className="mb-5 grid gap-4 sm:grid-cols-4">
@@ -307,8 +362,9 @@ export default function Settings() {
         </div>
 
         <p className="mt-4 text-xs text-muted">
-          You and Liz cannot both edit the same copy. To share changes: press Save a copy, send
-          the file to her, and she presses Open a saved copy.
+          {auth.state === 'signed-in'
+            ? 'You and Liz share the same budget. A change one of you makes shows up for the other within a few seconds.'
+            : 'You and Liz cannot both edit the same copy. To share changes: press Save a copy, send the file to her, and she presses Open a saved copy.'}
         </p>
       </Card>
 
