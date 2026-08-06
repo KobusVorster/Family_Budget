@@ -37,6 +37,11 @@
      clears 4.5:1 on it — series-1 itself only reaches 4.42. */
   --color-accent-strong: #256abf;
 
+  /* The same blue as *text*. The button ground only reaches 3.2:1 against the
+     dark surface, which is fine behind white lettering but not as lettering
+     itself, so links get their own themed step. */
+  --color-accent-text: #1f5aa6;
+
   /* Text-safe counterparts to the status hues. The status palette is tuned for
      marks at 3:1, which is not enough for a 14px label, so status-coloured
      *text* uses these instead. */
@@ -88,6 +93,7 @@
       --color-hairline: rgb(255 255 255 / 0.1);
 
       --color-accent-strong: #256abf;
+      --color-accent-text: #6fa5e8;
       --color-critical-text: #e66767;
 
       --color-series-1: #3987e5;
@@ -122,6 +128,7 @@
     --color-hairline: rgb(255 255 255 / 0.1);
 
     --color-accent-strong: #256abf;
+    --color-accent-text: #6fa5e8;
     --color-critical-text: #e66767;
 
     --color-series-1: #3987e5;

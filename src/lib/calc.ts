@@ -525,12 +525,67 @@ export interface LedgerPoint {
   bySource: Record<string, number>;
 }
 
-/** Roll daily entries up into weeks. Daily gig income is too noisy to read as a
- *  line; weekly is where the pattern shows. */
-export function weeklyLedger(
+export type LedgerPeriod = 'day' | 'week' | 'month' | 'year';
+
+/** How many buckets each view shows by default, and what each one is called.
+ *  Daily is capped well below the others: sixty bars side by side is a smear,
+ *  not a chart. */
+export const PERIOD_SIZE: Record<LedgerPeriod, number> = {
+  day: 30,
+  week: 12,
+  month: 12,
+  year: 5,
+};
+
+export const PERIOD_LABEL: Record<LedgerPeriod, string> = {
+  day: 'Day',
+  week: 'Week',
+  month: 'Month',
+  year: 'Year',
+};
+
+/** Which bucket a date falls in, and what to call it. */
+function bucketFor(iso: string, period: LedgerPeriod): { key: string; label: string } {
+  const date = new Date(`${iso}T00:00:00`);
+
+  if (period === 'day') {
+    return {
+      key: iso,
+      label: date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+    };
+  }
+
+  if (period === 'week') {
+    // Weeks start on Monday.
+    const start = new Date(date);
+    start.setDate(start.getDate() - ((date.getDay() + 6) % 7));
+    return {
+      key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(
+        start.getDate(),
+      ).padStart(2, '0')}`,
+      label: start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    };
+  }
+
+  if (period === 'month') {
+    return {
+      key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+      label: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+    };
+  }
+
+  return { key: String(date.getFullYear()), label: String(date.getFullYear()) };
+}
+
+/** Add the daily earnings log up by day, week, month or year.
+ *
+ *  Only income is counted, and only the most recent `count` buckets are
+ *  returned, newest last. */
+export function ledgerSeries(
   entries: LedgerEntry[],
   conversion: Conversion,
-  weeks = 8,
+  period: LedgerPeriod = 'week',
+  count = PERIOD_SIZE[period],
 ): LedgerPoint[] {
   const income = entries.filter((entry) => entry.type === 'income');
   if (income.length === 0) return [];
@@ -538,30 +593,30 @@ export function weeklyLedger(
   const buckets = new Map<string, LedgerPoint>();
 
   for (const entry of income) {
-    const date = new Date(`${entry.date}T00:00:00`);
-    // Week starts on Monday.
-    const offset = (date.getDay() + 6) % 7;
-    const start = new Date(date);
-    start.setDate(start.getDate() - offset);
-    const key = start.toISOString().slice(0, 10);
-
+    const { key, label } = bucketFor(entry.date, period);
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = {
-        date: key,
-        label: start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        total: 0,
-        bySource: {},
-      };
+      bucket = { date: key, label, total: 0, bySource: {} };
       buckets.set(key, bucket);
     }
-
     const value = amountIn(entry.amount, entry.currency, conversion);
     bucket.total += value;
     bucket.bySource[entry.label] = (bucket.bySource[entry.label] ?? 0) + value;
   }
 
-  return [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-weeks);
+  return [...buckets.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-Math.max(1, count));
+}
+
+/** Weeks, the old way. Kept so callers that only ever wanted weeks stay
+ *  readable. */
+export function weeklyLedger(
+  entries: LedgerEntry[],
+  conversion: Conversion,
+  weeks = 8,
+): LedgerPoint[] {
+  return ledgerSeries(entries, conversion, 'week', weeks);
 }
 
 export function ledgerSources(entries: LedgerEntry[]): string[] {

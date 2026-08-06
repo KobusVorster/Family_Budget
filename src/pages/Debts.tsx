@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { newId, useBudget } from '../store/BudgetContext';
-import type { CurrencyCode, Debt } from '../types';
+import type { CurrencyCode, Debt, PlanEvery, PlanUnit, RepaymentPlan } from '../types';
 import { summariseDebt, summariseDebts, totalDebtRemaining } from '../lib/calc';
 import type { DebtPayment } from '../types';
 import { formatMoney, formatPercent } from '../lib/money';
@@ -28,8 +28,8 @@ import { IconPlus } from '../components/icons';
 
 /* -- repayment schedules --------------------------------------------------- */
 
-type Every = 'once' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom';
-type CustomUnit = 'days' | 'weeks' | 'months';
+type Every = PlanEvery;
+type CustomUnit = PlanUnit;
 
 const EVERY_LABEL: Record<Every, string> = {
   once: 'Once off',
@@ -111,10 +111,38 @@ export function buildSchedule(options: {
       ).padStart(2, '0')}`,
       amount,
       paid: date <= today,
+      fromPlan: true,
     });
   }
 
   return payments;
+}
+
+/** Re-lay a loan's payment lines from its plan.
+ *
+ *  The plan owns the lines it made, so switching from monthly to weekly
+ *  replaces them instead of piling weekly lines on top of the monthly ones.
+ *  Payments added one at a time are never touched, and a tick already made on a
+ *  date the new plan also lands on is kept. */
+export function applyPlan(debt: Debt, plan: RepaymentPlan, today?: Date): Debt {
+  const rebuilt = buildSchedule({ ...plan, today });
+  if (rebuilt.length === 0) return debt;
+
+  const paidDates = new Set(
+    debt.payments.filter((payment) => payment.fromPlan && payment.paid).map((p) => p.date),
+  );
+  const byHand = debt.payments.filter((payment) => !payment.fromPlan);
+
+  return {
+    ...debt,
+    plan,
+    payments: [
+      ...byHand,
+      ...rebuilt.map((payment) =>
+        paidDates.has(payment.date) ? { ...payment, paid: true } : payment,
+      ),
+    ].sort((a, b) => a.date.localeCompare(b.date)),
+  };
 }
 
 function formatDate(iso: string): string {
@@ -575,15 +603,20 @@ function PaymentEditor({
 function SchedulePreview({
   plan,
   currency,
+  replaces = false,
 }: {
   plan: Parameters<typeof buildSchedule>[0];
   currency: CurrencyCode;
+  /** True when saving will rebuild payment lines this plan made before. */
+  replaces?: boolean;
 }) {
   const payments = buildSchedule(plan);
   if (payments.length === 0) {
     return (
-      <p className="mt-3 text-xs text-muted">
-        Fill in an amount to set up a plan, or leave this empty and add payments one at a time.
+      <p className="mt-3 rounded-lg bg-sunken p-3 text-sm text-ink-2">
+        <strong className="font-semibold text-ink">No payments will be made.</strong> Type an
+        “Amount each time” above to set up a plan. Without it, “How often” does nothing — add
+        payments one at a time instead.
       </p>
     );
   }
@@ -614,6 +647,11 @@ function SchedulePreview({
           all.
         </>
       )}
+      {replaces && (
+        <span className="mt-2 block text-xs text-muted">
+          Saving replaces the payments the old plan made. Payments you added one at a time stay.
+        </span>
+      )}
     </p>
   );
 }
@@ -633,21 +671,33 @@ function DebtEditor({
 }) {
   const { data, updateDebt } = useBudget();
   const [draft, setDraft] = useState(debt);
-  const [plan, setPlan] = useState({
-    start: new Date().toISOString().slice(0, 10),
-    amount: 0,
-    count: 12,
-    every: 'monthly' as Every,
-    customN: 2,
-    customUnit: 'weeks' as CustomUnit,
-  });
+
+  /* Seeded from the loan's saved plan, so re-opening Edit shows what was
+     chosen last time. Before this the plan was throw-away state that always
+     started at "every month", which read as the loan not saving. */
+  const [plan, setPlan] = useState<RepaymentPlan>(
+    () =>
+      debt.plan ?? {
+        start: new Date().toISOString().slice(0, 10),
+        amount: 0,
+        count: 12,
+        every: 'monthly',
+        customN: 2,
+        customUnit: 'weeks',
+      },
+  );
+
+  const planChanged = JSON.stringify(plan) !== JSON.stringify(debt.plan ?? null);
+  const rebuilds = planChanged && buildSchedule(plan).length > 0;
 
   const save = () => {
     let next = draft;
 
-    // Lay down a repayment plan in one go, if one was filled in.
-    const payments = buildSchedule(plan);
-    if (payments.length > 0) next = { ...next, payments: [...next.payments, ...payments] };
+    /* Remember the plan even when there is no amount yet, so picking "every
+       week" and coming back later still says every week. Only the dated
+       payment lines need an amount to be built. */
+    if (planChanged) next = { ...next, plan };
+    if (rebuilds) next = applyPlan(next, plan);
 
     if (isNew) onSaveNew(next);
     else {
@@ -834,7 +884,11 @@ function DebtEditor({
             )}
           </div>
 
-          <SchedulePreview plan={plan} currency={draft.currency} />
+          <SchedulePreview
+            plan={plan}
+            currency={draft.currency}
+            replaces={rebuilds && draft.payments.some((payment) => payment.fromPlan)}
+          />
         </fieldset>
       </div>
     </Modal>

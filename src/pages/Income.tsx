@@ -4,14 +4,13 @@ import type { CurrencyCode, Frequency, IncomeKind, IncomeSource, PersonId } from
 import {
   amountIn,
   gigAverage,
-  ledgerSources,
   monthlyIncome,
   monthlyValue,
-  weeklyLedger,
 } from '../lib/calc';
 import { FREQUENCIES, FREQUENCY_LABEL, formatMoney, toMonthly } from '../lib/money';
 import { seriesColor } from '../lib/palette';
 import {
+  AmountList,
   Button,
   Card,
   CardHeader,
@@ -24,8 +23,11 @@ import {
   Select,
   StatTile,
   TextInput,
+  newAmountPart,
+  sumParts,
+  type AmountPart,
 } from '../components/ui';
-import { ChartFrame, DataTable, StackedColumns } from '../components/charts';
+import GigChart from '../components/GigChart';
 import { IconPlus } from '../components/icons';
 
 const KINDS: IncomeKind[] = ['salary', 'support', 'gig', 'other'];
@@ -40,9 +42,6 @@ export default function Income() {
   const { data, conversion, addIncome, updateIncome, removeIncome } = useBudget();
   const currency = conversion.target;
   const [editing, setEditing] = useState<IncomeSource | null>(null);
-
-  const sources = useMemo(() => ledgerSources(data.ledger), [data.ledger]);
-  const weekly = useMemo(() => weeklyLedger(data.ledger, conversion, 8), [data.ledger, conversion]);
 
   const total = monthlyIncome(data, undefined, conversion);
 
@@ -188,37 +187,7 @@ export default function Income() {
       <GigSummary />
 
       <div className="mt-4">
-        <ChartFrame
-          title="Gig money, per week"
-          subtitle="Your daily earnings added up week by week."
-          legend={sources.map((source, index) => ({
-            label: source,
-            color: seriesColor(4 + index),
-          }))}
-          table={
-            <DataTable
-              columns={['Week of', ...sources, 'Total']}
-              rows={weekly.map((point) => [
-                point.label,
-                ...sources.map((source) => formatMoney(point.bySource[source] ?? 0, currency)),
-                formatMoney(point.total, currency),
-              ])}
-            />
-          }
-        >
-          <StackedColumns
-            currency={currency}
-            height={260}
-            points={weekly.map((point) => ({
-              label: point.label,
-              segments: sources.map((source, index) => ({
-                key: source,
-                value: point.bySource[source] ?? 0,
-                color: seriesColor(4 + index),
-              })),
-            }))}
-          />
-        </ChartFrame>
+        <GigChart entries={data.ledger} conversion={conversion} height={280} />
       </div>
 
       <LedgerCard />
@@ -323,8 +292,10 @@ function LedgerCard() {
     date: new Date().toISOString().slice(0, 10),
     personId: data.people[0]?.id ?? 'will',
     label: 'DoorDash',
-    amount: 0,
   });
+  /* One box to start with. Press "Add another amount" for each extra dash and
+     they are added together into the one day. */
+  const [parts, setParts] = useState<AmountPart[]>(() => [newAmountPart()]);
 
   const entries = useMemo(
     () => [...data.ledger].sort((a, b) => b.date.localeCompare(a.date)),
@@ -334,19 +305,21 @@ function LedgerCard() {
 
   const person = data.people.find((p) => p.id === draft.personId);
 
+  const total = sumParts(parts);
+
   const submit = () => {
-    const amount = draft.amount;
-    if (!Number.isFinite(amount) || amount <= 0 || !draft.label.trim()) return;
+    if (!Number.isFinite(total) || total <= 0 || !draft.label.trim()) return;
     addLedgerEntry({
       id: newId('led'),
       date: draft.date,
       personId: draft.personId,
       label: draft.label.trim(),
-      amount,
+      amount: total,
       currency: person?.currency ?? 'USD',
       type: 'income',
     });
-    setDraft((current) => ({ ...current, amount: 0 }));
+    // Back to a single empty box, ready for the next day.
+    setParts([newAmountPart()]);
   };
 
   return (
@@ -357,12 +330,13 @@ function LedgerCard() {
       />
 
       <form
-        className="mb-5 grid gap-3 sm:grid-cols-[auto_1fr_1fr_auto] sm:items-end"
+        className="mb-5 grid gap-4"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
       >
+        <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
         <Field label="Date">
           {(id) => (
             <TextInput
@@ -383,18 +357,17 @@ function LedgerCard() {
             />
           )}
         </Field>
-        <Field label={`Amount (${person?.currency ?? 'USD'})`}>
-          {(id) => (
-            <MoneyInput
-              id={id}
-              value={draft.amount}
-              placeholder="0.00"
-              onValueChange={(amount) => setDraft({ ...draft, amount })}
-            />
-          )}
-        </Field>
-        <Button variant="primary" type="submit" className="h-[38px]">
-          Add
+        </div>
+
+        <AmountList
+          label={`Amount (${person?.currency ?? 'USD'})`}
+          parts={parts}
+          onChange={setParts}
+          currency={person?.currency ?? 'USD'}
+          hint="Did several dashes or trips today? Press “Add another amount” for each one and they are added together."
+        />
+        <Button variant="primary" type="submit" className="justify-self-start" disabled={total <= 0}>
+          {parts.filter((part) => part.value > 0).length > 1 ? 'Add them all up' : 'Add'}
         </Button>
       </form>
 

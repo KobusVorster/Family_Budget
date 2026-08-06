@@ -6,13 +6,11 @@ import {
   categoryBreakdown,
   checklistProgress,
   debtSplit,
-  ledgerSources,
   monthKey,
   reviewQueue,
   summariseDebts,
   summariseHousehold,
   summariseSavings,
-  weeklyLedger,
   whatToPayNext,
   type DueItem,
 } from '../lib/calc';
@@ -33,7 +31,8 @@ import {
   StatTile,
   TextInput,
 } from '../components/ui';
-import { ChartFrame, DataTable, RankedBars, ShareBar, StackedColumns } from '../components/charts';
+import { ChartFrame, DataTable, RankedBars, ShareBar } from '../components/charts';
+import GigChart from '../components/GigChart';
 import { IconPlus } from '../components/icons';
 
 export default function Dashboard() {
@@ -49,9 +48,6 @@ export default function Dashboard() {
   const split = useMemo(() => debtSplit(data, conversion), [data, conversion]);
   const due = useMemo(() => whatToPayNext(data, conversion), [data, conversion]);
   const estimates = useMemo(() => reviewQueue(data).length, [data]);
-
-  const sources = useMemo(() => ledgerSources(data.ledger), [data.ledger]);
-  const weekly = useMemo(() => weeklyLedger(data.ledger, conversion, 8), [data.ledger, conversion]);
 
   const thisMonth = monthKey(new Date());
   const netTone = household.net < 0 ? 'critical' : 'good';
@@ -311,9 +307,11 @@ export default function Dashboard() {
             />
           </ChartFrame>
 
-          <ChartFrame
-            title="Will’s gig money, per week"
-            subtitle="DoorDash and Lyft added up week by week."
+          <GigChart
+            entries={data.ledger}
+            conversion={conversion}
+            title="Will’s gig money"
+            height={220}
             action={
               <a
                 href="#income"
@@ -322,33 +320,7 @@ export default function Dashboard() {
                 Open
               </a>
             }
-            legend={sources.map((source, index) => ({
-              label: source,
-              color: seriesColor(4 + index),
-            }))}
-            table={
-              <DataTable
-                columns={['Week of', ...sources, 'Total']}
-                rows={weekly.map((point) => [
-                  point.label,
-                  ...sources.map((source) => formatMoney(point.bySource[source] ?? 0, currency)),
-                  formatMoney(point.total, currency),
-                ])}
-              />
-            }
-          >
-            <StackedColumns
-              currency={currency}
-              points={weekly.map((point) => ({
-                label: point.label,
-                segments: sources.map((source, index) => ({
-                  key: source,
-                  value: point.bySource[source] ?? 0,
-                  color: seriesColor(4 + index),
-                })),
-              }))}
-            />
-          </ChartFrame>
+          />
         </div>
       </div>
 

@@ -103,10 +103,15 @@ create table if not exists debts (
   currency text not null check (currency in ('USD', 'ZAR')),
   principal numeric not null default 0,
   verified boolean not null default true,
+  -- The repayment recipe (how often, how much, starting when), so the Edit
+  -- screen reopens showing what was chosen.
+  plan jsonb,
   note text,
   updated_at timestamptz not null default now(),
   primary key (household_id, id)
 );
+
+alter table debts add column if not exists plan jsonb;
 
 create table if not exists debt_payments (
   id text not null,
@@ -115,10 +120,15 @@ create table if not exists debt_payments (
   date date not null,
   amount numeric not null default 0,
   paid boolean not null default false,
+  -- Set when the line came from the loan's repayment plan. Changing the plan
+  -- rebuilds these and leaves hand-added payments alone.
+  from_plan boolean not null default false,
   note text,
   updated_at timestamptz not null default now(),
   primary key (household_id, id)
 );
+
+alter table debt_payments add column if not exists from_plan boolean not null default false;
 
 create index if not exists debt_payments_debt_idx on debt_payments(household_id, debt_id);
 

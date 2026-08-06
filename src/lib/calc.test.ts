@@ -5,6 +5,7 @@ import {
   categoryBreakdown,
   debtSplit,
   gigAverage,
+  ledgerSeries,
   summariseSavings,
   whatToPayNext,
   checklistProgress,
@@ -18,9 +19,10 @@ import {
   type Conversion,
 } from './calc';
 import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
-import { buildSchedule } from '../pages/Debts';
+import { applyPlan, buildSchedule } from '../pages/Debts';
+import { sumParts } from '../components/ui';
 import { SEED_USD_ZAR, createSeedData } from '../data/seed';
-import type { BudgetData, Debt, Expense } from '../types';
+import type { BudgetData, Debt, Expense, LedgerEntry } from '../types';
 
 const RATE = SEED_USD_ZAR;
 const inRand: Conversion = { usdZarRate: RATE, target: 'ZAR' };
@@ -364,6 +366,72 @@ describe('building a repayment schedule', () => {
   });
 });
 
+describe('changing a loan’s repayment plan', () => {
+  const monthly = {
+    start: '2026-03-02',
+    count: 3,
+    amount: 100,
+    every: 'monthly' as const,
+    customN: 2,
+    customUnit: 'weeks' as const,
+  };
+  const today = new Date('2026-03-01T00:00:00');
+
+  const loan = (): Debt => ({
+    id: 'd1',
+    label: 'Car loan',
+    personId: 'will',
+    lender: 'MI Motors',
+    currency: 'USD',
+    principal: 1000,
+    payments: [],
+    verified: true,
+  });
+
+  it('remembers the plan on the loan so Edit reopens with it', () => {
+    const next = applyPlan(loan(), { ...monthly, every: 'weekly' }, today);
+    expect(next.plan?.every).toBe('weekly');
+  });
+
+  it('replaces the old lines instead of adding to them', () => {
+    const withMonthly = applyPlan(loan(), monthly, today);
+    expect(withMonthly.payments.map((p) => p.date)).toEqual([
+      '2026-03-02',
+      '2026-04-02',
+      '2026-05-02',
+    ]);
+
+    // Switching to weekly must not leave the monthly dates behind.
+    const withWeekly = applyPlan(withMonthly, { ...monthly, every: 'weekly' }, today);
+    expect(withWeekly.payments.map((p) => p.date)).toEqual([
+      '2026-03-02',
+      '2026-03-09',
+      '2026-03-16',
+    ]);
+  });
+
+  it('leaves payments added one at a time alone', () => {
+    const start = loan();
+    start.payments = [{ id: 'hand', date: '2026-02-01', amount: 250, paid: true }];
+    const next = applyPlan(start, monthly, today);
+    expect(next.payments[0]).toMatchObject({ id: 'hand', amount: 250 });
+    expect(next.payments).toHaveLength(4);
+  });
+
+  it('keeps a tick already made on a date the new plan also lands on', () => {
+    const withMonthly = applyPlan(loan(), monthly, today);
+    withMonthly.payments[0].paid = true;
+    // Weekly starts on the same day, so that first tick must survive.
+    const withWeekly = applyPlan(withMonthly, { ...monthly, every: 'weekly' }, today);
+    expect(withWeekly.payments.map((p) => p.paid)).toEqual([true, false, false]);
+  });
+
+  it('changes nothing when there is no amount to pay', () => {
+    const start = loan();
+    expect(applyPlan(start, { ...monthly, amount: 0 }, today)).toBe(start);
+  });
+});
+
 describe('what to pay next', () => {
   const today = new Date('2026-08-15T00:00:00');
 
@@ -563,6 +631,67 @@ describe('the daily ledger', () => {
       inDollars,
     );
     expect(points[0].total).toBe(50);
+  });
+});
+
+describe('day, month and year views of the ledger', () => {
+  // Two sources, spread over two days, two months and two years.
+  const entries: LedgerEntry[] = [
+    { id: '1', date: '2025-12-30', personId: 'will', label: 'Lyft', amount: 10, currency: 'USD', type: 'income' },
+    { id: '2', date: '2026-01-05', personId: 'will', label: 'Lyft', amount: 20, currency: 'USD', type: 'income' },
+    { id: '3', date: '2026-01-05', personId: 'will', label: 'DoorDash', amount: 5, currency: 'USD', type: 'income' },
+    { id: '4', date: '2026-02-05', personId: 'will', label: 'Lyft', amount: 40, currency: 'USD', type: 'income' },
+  ];
+
+  it('gives one bar per day', () => {
+    const points = ledgerSeries(entries, inDollars, 'day');
+    expect(points.map((point) => point.date)).toEqual(['2025-12-30', '2026-01-05', '2026-02-05']);
+    // Both sources on 5 Jan land in the same bar, kept apart by name.
+    expect(points[1].bySource).toEqual({ Lyft: 20, DoorDash: 5 });
+    expect(points[1].total).toBe(25);
+  });
+
+  it('gives one bar per month', () => {
+    const points = ledgerSeries(entries, inDollars, 'month');
+    expect(points.map((point) => point.date)).toEqual(['2025-12', '2026-01', '2026-02']);
+    expect(points.map((point) => point.total)).toEqual([10, 25, 40]);
+  });
+
+  it('gives one bar per year', () => {
+    const points = ledgerSeries(entries, inDollars, 'year');
+    expect(points.map((point) => point.date)).toEqual(['2025', '2026']);
+    expect(points.map((point) => point.total)).toEqual([10, 65]);
+  });
+
+  it('keeps only the most recent buckets when there are more than asked for', () => {
+    const points = ledgerSeries(entries, inDollars, 'day', 2);
+    expect(points.map((point) => point.date)).toEqual(['2026-01-05', '2026-02-05']);
+  });
+
+  it('converts to the currency being shown', () => {
+    const points = ledgerSeries(entries, inRand, 'year');
+    expect(points[0].total).toBeCloseTo(10 * RATE, 2);
+  });
+});
+
+describe('adding several amounts into one', () => {
+  it('adds the boxes up', () => {
+    expect(sumParts([{ id: 'a', value: 23.33 }, { id: 'b', value: 11.5 }])).toBe(34.83);
+  });
+
+  it('does not drift on amounts binary cannot hold exactly', () => {
+    // 0.1 + 0.2 is 0.30000000000000004 if you just add the floats.
+    expect(sumParts([{ id: 'a', value: 0.1 }, { id: 'b', value: 0.2 }])).toBe(0.3);
+  });
+
+  it('adds up ten dashes without a rounding tail', () => {
+    const parts = Array.from({ length: 10 }, (_, i) => ({ id: String(i), value: 7.07 }));
+    expect(sumParts(parts)).toBe(70.7);
+  });
+
+  it('treats empty boxes as nothing', () => {
+    expect(sumParts([{ id: 'a', value: 25 }, { id: 'b', value: 0 }])).toBe(25);
+    expect(sumParts([])).toBe(0);
   });
 });
 

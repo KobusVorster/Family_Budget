@@ -96,6 +96,7 @@ export async function fetchBudget(householdId: string): Promise<Partial<BudgetDa
       date: String(row.date),
       amount: num(row.amount),
       paid: Boolean(row.paid),
+      fromPlan: Boolean(row.from_plan),
       note: (row.note as string) ?? undefined,
     });
     paymentsByDebt.set(String(row.debt_id), list);
@@ -166,6 +167,7 @@ export async function fetchBudget(householdId: string): Promise<Partial<BudgetDa
         payments: (paymentsByDebt.get(String(row.id)) ?? []).sort((a, b) =>
           a.date.localeCompare(b.date),
         ),
+        plan: (row.plan as Debt['plan']) ?? undefined,
         verified: Boolean(row.verified),
         note: (row.note as string) ?? undefined,
       }),
@@ -260,6 +262,7 @@ export const rowFor = {
     currency: d.currency,
     principal: d.principal,
     verified: d.verified,
+    plan: d.plan ?? null,
     note: d.note ?? null,
   }),
   payment: (debtId: string, p: DebtPayment) => ({
@@ -268,6 +271,7 @@ export const rowFor = {
     date: p.date,
     amount: p.amount,
     paid: p.paid,
+    from_plan: p.fromPlan ?? false,
     note: p.note ?? null,
   }),
   ledger: (l: LedgerEntry) => ({

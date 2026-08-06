@@ -300,16 +300,22 @@ function topRoundedPath(x: number, y: number, w: number, h: number, r: number): 
   ].join(' ');
 }
 
-/** Columns over time, stacked by source. Total is the stack height; mix is the
- *  segments. Hover or keyboard-focus a column for the exact figures. */
+/** Columns over time.
+ *
+ *  `grouped` puts each source in its own bar side by side, which is what you
+ *  want when the question is "how do these two compare". `stacked` puts them on
+ *  top of each other, for when the question is "what did the whole period come
+ *  to". Hover or keyboard-focus a column for the exact figures. */
 export function StackedColumns({
   points,
   currency,
   height = 220,
+  layout = 'grouped',
 }: {
   points: ColumnPoint[];
   currency: CurrencyCode;
   height?: number;
+  layout?: 'stacked' | 'grouped';
 }) {
   const [ref, width] = useMeasure<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
@@ -326,12 +332,24 @@ export function StackedColumns({
   const totals = points.map((point) =>
     point.segments.reduce((sum, segment) => sum + segment.value, 0),
   );
-  const ticks = niceTicks(Math.max(...totals, 1));
+  // Side-by-side bars are measured against the tallest single bar; stacked ones
+  // against the tallest stack.
+  const tallest =
+    layout === 'grouped'
+      ? Math.max(...points.flatMap((point) => point.segments.map((segment) => segment.value)), 1)
+      : Math.max(...totals, 1);
+  const ticks = niceTicks(tallest);
   const scaleMax = ticks[ticks.length - 1] || 1;
 
   const band = plotW / points.length;
-  const barW = Math.min(24, band * 0.62);
   const GAP = 2;
+  const seriesCount = Math.max(1, points[0]?.segments.length ?? 1);
+  // The group leaves the band's leftover as air rather than filling it.
+  const groupW = Math.min(band * 0.74, 24 * seriesCount + GAP * (seriesCount - 1));
+  const barW =
+    layout === 'grouped'
+      ? Math.max(2, (groupW - GAP * (seriesCount - 1)) / seriesCount)
+      : Math.min(24, band * 0.62);
 
   // Thin the x labels out rather than letting them run into each other, and
   // count back from the newest column so the most recent period is always the
@@ -376,7 +394,7 @@ export function StackedColumns({
 
         {points.map((point, index) => {
           const cx = pad.left + band * index + band / 2;
-          const x = cx - barW / 2;
+          const x = cx - (layout === 'grouped' ? groupW : barW) / 2;
           let cursorY = pad.top + plotH;
           const total = totals[index];
 
@@ -397,26 +415,47 @@ export function StackedColumns({
                 onFocus={() => setActive(index)}
                 onBlur={() => setActive(null)}
               />
-              {point.segments
-                .filter((segment) => segment.value > 0)
-                .map((segment, segmentIndex, list) => {
-                  const rawH = (segment.value / scaleMax) * plotH;
-                  const isTop = segmentIndex === list.length - 1;
-                  // The 2px separator is subtracted from the segment, not drawn
-                  // over it, so the stack still sums to the true height.
-                  const h = Math.max(1, rawH - (isTop ? 0 : GAP));
-                  const y = cursorY - rawH;
-                  cursorY -= rawH;
-                  return (
-                    <path
-                      key={segment.key}
-                      d={topRoundedPath(x, y, barW, h, isTop ? 4 : 0)}
-                      fill={segment.color}
-                      opacity={active === null || active === index ? 1 : 0.45}
-                      style={{ transition: 'opacity 150ms' }}
-                    />
-                  );
-                })}
+              {layout === 'grouped'
+                ? point.segments.map((segment, segmentIndex) => {
+                    const h = Math.max(segment.value > 0 ? 1 : 0, (segment.value / scaleMax) * plotH);
+                    if (h <= 0) return null;
+                    return (
+                      <path
+                        key={segment.key}
+                        d={topRoundedPath(
+                          x + segmentIndex * (barW + GAP),
+                          pad.top + plotH - h,
+                          barW,
+                          h,
+                          4,
+                        )}
+                        fill={segment.color}
+                        opacity={active === null || active === index ? 1 : 0.45}
+                        style={{ transition: 'opacity 150ms' }}
+                      />
+                    );
+                  })
+                : point.segments
+                    .filter((segment) => segment.value > 0)
+                    .map((segment, segmentIndex, list) => {
+                      const rawH = (segment.value / scaleMax) * plotH;
+                      const isTop = segmentIndex === list.length - 1;
+                      // The 2px separator is subtracted from the segment, not
+                      // drawn over it, so the stack still sums to the true
+                      // height.
+                      const h = Math.max(1, rawH - (isTop ? 0 : GAP));
+                      const y = cursorY - rawH;
+                      cursorY -= rawH;
+                      return (
+                        <path
+                          key={segment.key}
+                          d={topRoundedPath(x, y, barW, h, isTop ? 4 : 0)}
+                          fill={segment.color}
+                          opacity={active === null || active === index ? 1 : 0.45}
+                          style={{ transition: 'opacity 150ms' }}
+                        />
+                      );
+                    })}
               {(points.length - 1 - index) % labelStep === 0 && (
                 <text
                   x={cx}

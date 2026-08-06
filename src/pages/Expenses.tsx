@@ -5,6 +5,7 @@ import { categoryBreakdown, monthlyValue } from '../lib/calc';
 import { FREQUENCIES, FREQUENCY_LABEL, formatMoney, formatPercent, toMonthly } from '../lib/money';
 import { CATEGORIES, seriesColor } from '../lib/palette';
 import {
+  AmountList,
   Badge,
   Button,
   Card,
@@ -13,13 +14,15 @@ import {
   EstimateMark,
   Field,
   Modal,
-  MoneyInput,
   NumberInput,
   PageHeader,
   SegmentedControl,
   Select,
   StatTile,
   TextInput,
+  newAmountPart,
+  sumParts,
+  type AmountPart,
 } from '../components/ui';
 import { ChartFrame, DataTable, RankedBars } from '../components/charts';
 import { IconPlus } from '../components/icons';
@@ -290,6 +293,15 @@ function ExpenseEditor({
   const [draft, setDraft] = useState(expense);
   const isShared = draft.owner === 'shared';
 
+  /* The amount can be built out of several separate amounts — a shop split
+     over three slips, say. One box holds whatever the bill is already set to;
+     press "Add another amount" for each extra one and the total is saved. */
+  const [parts, setParts] = useState<AmountPart[]>(() => [newAmountPart(expense.amount)]);
+  const setAmountParts = (next: AmountPart[]) => {
+    setParts(next);
+    setDraft((current) => ({ ...current, amount: sumParts(next) }));
+  };
+
   const setOwner = (owner: Owner) => {
     setDraft((current) => ({
       ...current,
@@ -392,17 +404,18 @@ function ExpenseEditor({
           </Field>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Amount">
-            {(id) => (
-              <MoneyInput
-                id={id}
-                min="0"
-                value={draft.amount}
-                onValueChange={(amount) => setDraft({ ...draft, amount })}
-              />
-            )}
-          </Field>
+        {/* The amount gets its own row. With several boxes stacked it needs the
+            full width, and squeezing it into a third of the dialog wrapped the
+            "Add another amount" button onto two lines. */}
+        <AmountList
+          label="Amount"
+          parts={parts}
+          onChange={setAmountParts}
+          currency={draft.currency}
+          hint="Paid in more than one go? Press “Add another amount” for each one."
+        />
+
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Currency">
             {(id) => (
               <Select

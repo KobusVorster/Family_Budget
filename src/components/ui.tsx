@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { STATUS, STATUS_TEXT, type StatusTone, type TextTone } from '../lib/palette';
 
 /* -- surfaces ------------------------------------------------------------- */
@@ -404,6 +405,102 @@ export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSe
   return <select {...props} className={`${CONTROL_CLASS} ${className}`} />;
 }
 
+/** One amount, made of as many parts as you like.
+ *
+ *  A day on DoorDash is five to ten separate dashes, and a shop is a handful of
+ *  separate slips. Rather than making people add them up on a calculator first,
+ *  they can put each one in its own box and the total is what gets saved.
+ *
+ *  Every box keeps its own id so removing the second one does not renumber the
+ *  rest — React would otherwise reuse the wrong input and the caret would jump
+ *  out of whatever was being typed. */
+export interface AmountPart {
+  id: string;
+  value: number;
+}
+
+export function newAmountPart(value = 0): AmountPart {
+  return { id: Math.random().toString(36).slice(2, 10), value };
+}
+
+export function sumParts(parts: AmountPart[]): number {
+  // Money, so add in cents and come back — 0.1 + 0.2 is not 0.3 in binary.
+  return parts.reduce((total, part) => total + Math.round(part.value * 100), 0) / 100;
+}
+
+export function AmountList({
+  label,
+  parts,
+  onChange,
+  currency,
+  hint,
+}: {
+  label: string;
+  parts: AmountPart[];
+  onChange: (next: AmountPart[]) => void;
+  /** Only used to write the total out in words. */
+  currency: string;
+  hint?: ReactNode;
+}) {
+  const total = sumParts(parts);
+  const filled = parts.filter((part) => part.value > 0).length;
+
+  const set = (id: string, value: number) =>
+    onChange(parts.map((part) => (part.id === id ? { ...part, value } : part)));
+
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-sm font-medium text-ink-2">{label}</span>
+
+      <div className="flex flex-col gap-2">
+        {parts.map((part, index) => (
+          <div key={part.id} className="flex items-center gap-2">
+            <MoneyInput
+              value={part.value}
+              placeholder="0.00"
+              aria-label={parts.length > 1 ? `${label}, box ${index + 1}` : label}
+              onValueChange={(value) => set(part.id, value)}
+            />
+            {parts.length > 1 && (
+              <Button
+                variant="ghost"
+                aria-label={`Remove box ${index + 1}`}
+                onClick={() => onChange(parts.filter((item) => item.id !== part.id))}
+              >
+                ✕
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <button
+          type="button"
+          onClick={() => onChange([...parts, newAmountPart()])}
+          className="text-sm font-medium text-accent-text underline-offset-2 hover:underline"
+        >
+          + Add another amount
+        </button>
+        {filled > 1 && (
+          <span className="tnum text-sm text-ink-2">
+            {filled} amounts add up to{' '}
+            <strong className="font-semibold text-ink">
+              {currency === 'ZAR' ? 'R' : '$'}
+              {total.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </strong>
+          </span>
+        )}
+      </div>
+
+      {hint && <p className="text-xs text-muted">{hint}</p>}
+    </div>
+  );
+}
+
 export function Switch({
   checked,
   onChange,
@@ -498,7 +595,17 @@ export function Modal({
 
   if (!open) return null;
 
-  return (
+  /* Rendered into `body`, not where it sits in the tree.
+   *
+   *  `position: fixed` is only relative to the screen while no ancestor has a
+   *  transform. Every page is wrapped in `.rise`, whose entry animation ends on
+   *  `transform: none` — but with `animation-fill-mode: both` that computes to
+   *  `matrix(1, 0, 0, 1, 0, 0)`, and any value other than `none` makes the
+   *  element a containing block. The backdrop was therefore stretching over the
+   *  whole document instead of the screen, so a dialog opened halfway down a
+   *  long list appeared halfway down the page and you had to scroll to find it.
+   *  A portal puts it outside `.rise`, where `fixed` means the screen again. */
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-6"
       onMouseDown={(event) => {
@@ -526,7 +633,8 @@ export function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
