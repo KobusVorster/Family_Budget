@@ -10,6 +10,9 @@ import {
   whatToPayNext,
   checklistProgress,
   monthlyBurden,
+  spendAverage,
+  budgetedPerMonth,
+  MIN_LOG_DAYS,
   monthlyIncome,
   monthlyValue,
   settleShared,
@@ -730,6 +733,121 @@ describe('when the host will not save the file', () => {
   it('stops when the reader said no', () => {
     // Downloading anyway would override a choice they had just made.
     expect(afterFailedSave({ code: 'declined' })).toBe('declined');
+  });
+});
+
+describe('day-to-day spending', () => {
+  const spend = (date: string, amount: number, personId = 'will'): LedgerEntry => ({
+    id: `s-${date}-${personId}`,
+    date,
+    personId,
+    label: 'Groceries',
+    amount,
+    currency: 'USD',
+    type: 'expense',
+  });
+
+  const withSpending = (entries: LedgerEntry[]): BudgetData => {
+    const data = seed();
+    data.ledger = entries;
+    return data;
+  };
+
+  it('averages over every day covered, not just the days with something on them', () => {
+    // Two entries ten days apart is eleven days of spending, most of them zero.
+    const average = spendAverage(
+      withSpending([spend('2026-08-01', 100), spend('2026-08-11', 100)]),
+      undefined,
+      inDollars,
+    );
+    expect(average?.days).toBe(11);
+    expect(average?.perDay).toBeCloseTo(200 / 11, 4);
+  });
+
+  it('is nothing at all when no spending has been logged', () => {
+    expect(spendAverage(withSpending([]), undefined, inDollars)).toBeNull();
+  });
+
+  it('does not mistake earnings for spending', () => {
+    const data = withSpending([]);
+    data.ledger = [
+      { id: 'i1', date: '2026-08-01', personId: 'will', label: 'Lyft', amount: 500, currency: 'USD', type: 'income' },
+    ];
+    expect(spendAverage(data, undefined, inDollars)).toBeNull();
+    expect(gigAverage(data, undefined, inDollars)?.total).toBe(500);
+  });
+
+  it('counts towards what a person carries, on top of their bills', () => {
+    const before = monthlyBurden(seed(), 'will', inDollars);
+    const after = monthlyBurden(
+      withSpending([spend('2026-08-01', 30), spend('2026-08-30', 30)]),
+      'will',
+      inDollars,
+    );
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it('refuses to budget on a log too short to mean anything', () => {
+    /* One $60 shop over a one-day span works out to $1,834 a month. That is a
+       single number multiplied by thirty, not an estimate, and it would wreck
+       the left-over figure on the day someone first tries the feature. */
+    const oneDay = withSpending([spend('2026-08-01', 60)]);
+    const average = spendAverage(oneDay, undefined, inDollars)!;
+
+    expect(average.days).toBe(1);
+    expect(average.perMonth).toBeGreaterThan(1800);
+    expect(average.enough).toBe(false);
+    // Shown, but kept out of the totals.
+    expect(budgetedPerMonth(average)).toBe(0);
+    expect(monthlyBurden(oneDay, 'will', inDollars)).toBeCloseTo(
+      monthlyBurden(seed(), 'will', inDollars),
+      6,
+    );
+  });
+
+  it('starts counting once the log is long enough', () => {
+    const short = withSpending([spend('2026-08-01', 60), spend('2026-08-13', 60)]);
+    const long = withSpending([spend('2026-08-01', 60), spend('2026-08-14', 60)]);
+
+    expect(spendAverage(short, undefined, inDollars)!.days).toBe(13);
+    expect(spendAverage(short, undefined, inDollars)!.enough).toBe(false);
+
+    expect(spendAverage(long, undefined, inDollars)!.days).toBe(MIN_LOG_DAYS);
+    expect(spendAverage(long, undefined, inDollars)!.enough).toBe(true);
+    expect(summariseHousehold(long, inDollars).spending).toBeGreaterThan(0);
+    expect(summariseHousehold(short, inDollars).spending).toBe(0);
+  });
+
+  it('holds earnings to the same rule', () => {
+    // The gig log only escaped this because it happens to span 62 days.
+    expect(gigAverage(seed(), 'will', inDollars)!.enough).toBe(true);
+
+    const oneDay = seed();
+    oneDay.ledger = [
+      { id: 'i1', date: '2026-08-01', personId: 'will', label: 'Lyft', amount: 400, currency: 'USD', type: 'income' },
+    ];
+    expect(gigAverage(oneDay, 'will', inDollars)!.enough).toBe(false);
+    const fixed = oneDay.income
+      .filter((source) => source.personId === 'will' && source.active)
+      .reduce((total, source) => total + monthlyValue(source, inDollars), 0);
+    expect(monthlyIncome(oneDay, 'will', inDollars)).toBeCloseTo(fixed, 6);
+  });
+
+  it('stays with whoever spent it rather than being shared out', () => {
+    const data = withSpending([spend('2026-08-01', 60), spend('2026-08-30', 60)]);
+    const willBefore = monthlyBurden(seed(), 'will', inDollars);
+    const lizBefore = monthlyBurden(seed(), 'liz', inDollars);
+    expect(monthlyBurden(data, 'will', inDollars)).toBeGreaterThan(willBefore);
+    expect(monthlyBurden(data, 'liz', inDollars)).toBeCloseTo(lizBefore, 6);
+  });
+
+  it('keeps bills and spending apart in the household total', () => {
+    const data = withSpending([spend('2026-08-01', 45), spend('2026-08-30', 45)]);
+    const summary = summariseHousehold(data, inDollars);
+    expect(summary.spending).toBeGreaterThan(0);
+    expect(summary.expenses).toBeCloseTo(summary.bills + summary.spending, 6);
+    // Kept apart precisely so that double counting against a bill is visible.
+    expect(summary.bills).toBeCloseTo(summariseHousehold(seed(), inDollars).expenses, 6);
   });
 });
 

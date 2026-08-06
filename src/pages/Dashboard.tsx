@@ -157,6 +157,14 @@ export default function Dashboard() {
                   {formatMoney(household.expenses, currency)} out
                 </a>
                 .{' '}
+                {/* Split out so that spending logged twice — once as a bill and
+                    again day by day — shows up instead of hiding in one total. */}
+                {household.spending > 0 && (
+                  <>
+                    That is {formatMoney(household.bills, currency)} of bills plus{' '}
+                    {formatMoney(household.spending, currency)} day to day.{' '}
+                  </>
+                )}
                 {household.net < 0
                   ? 'You spend more than you earn.'
                   : thinMargin

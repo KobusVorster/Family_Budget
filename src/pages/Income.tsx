@@ -298,7 +298,12 @@ function LedgerCard() {
   const [parts, setParts] = useState<AmountPart[]>(() => [newAmountPart()]);
 
   const entries = useMemo(
-    () => [...data.ledger].sort((a, b) => b.date.localeCompare(a.date)),
+    // Earnings only. The same log holds day-to-day spending, which belongs on
+    // Money out, not here.
+    () =>
+      data.ledger
+        .filter((entry) => entry.type === 'income')
+        .sort((a, b) => b.date.localeCompare(a.date)),
     [data.ledger],
   );
   const visible = showAll ? entries : entries.slice(0, 12);

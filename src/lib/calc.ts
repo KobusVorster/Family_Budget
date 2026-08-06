@@ -45,32 +45,50 @@ export function activeIncome(data: BudgetData, personId?: PersonId): IncomeSourc
 /** Average days in a month (365.25 / 12). */
 export const DAYS_PER_MONTH = 365.25 / 12;
 
+/** How many days a log must cover before its average is worth budgeting on.
+ *
+ *  Turning a daily figure into a monthly one multiplies it by about thirty, so
+ *  a log covering one day says a single $60 shop is $1,834 a month. That is not
+ *  an estimate, it is one number wearing a disguise, and it would quietly wreck
+ *  the "left over each month" figure. Two weeks is enough to have caught a
+ *  normal week and a quiet one. */
+export const MIN_LOG_DAYS = 14;
+
 export interface GigAverage {
   /** First and last day in the log. */
   from: string;
   to: string;
-  /** Calendar days the log covers, including days that earned nothing. */
+  /** Calendar days the log covers, including days with nothing on them. */
   days: number;
   total: number;
   perDay: number;
   perMonth: number;
+  /** Whether the log covers enough days for `perMonth` to mean anything. Until
+   *  it does, the totals leave it out rather than budgeting on one day. */
+  enough: boolean;
   bySource: Array<{ label: string; total: number; perMonth: number; days: number }>;
 }
 
-/** Turn a daily earnings log into a monthly figure.
+/** The monthly figure, or zero while the log is still too short to trust. */
+export function budgetedPerMonth(average: GigAverage | null): number {
+  return average && average.enough ? average.perMonth : 0;
+}
+
+/** Turn a daily log into a monthly figure.
  *
- *  Gig work pays a different amount every day, so there is no number to type
- *  in. The average is taken over every calendar day the log covers — including
- *  the days that earned nothing, because a day off is part of the average.
- *  Counting only the days that made money would overstate the month. */
-export function gigAverage(
+ *  Gig work pays a different amount every day, and day-to-day spending is the
+ *  same shape in reverse, so both sides use this. The average is taken over
+ *  every calendar day the log covers — including the days with nothing on them,
+ *  because a day off is part of the average. Counting only the days with an
+ *  entry would overstate the month. */
+export function ledgerAverage(
   data: BudgetData,
   personId: PersonId | undefined,
   conversion: Conversion,
+  type: LedgerEntry['type'],
 ): GigAverage | null {
   const entries = data.ledger.filter(
-    (entry) =>
-      entry.type === 'income' && (personId === undefined || entry.personId === personId),
+    (entry) => entry.type === type && (personId === undefined || entry.personId === personId),
   );
   if (entries.length === 0) return null;
 
@@ -102,6 +120,7 @@ export function gigAverage(
     total,
     perDay: total / span,
     perMonth: (total / span) * DAYS_PER_MONTH,
+    enough: span >= MIN_LOG_DAYS,
     bySource: [...totals.entries()]
       .map(([label, bucket]) => ({
         label,
@@ -111,6 +130,27 @@ export function gigAverage(
       }))
       .sort((a, b) => b.total - a.total),
   };
+}
+
+/** What the daily earnings log works out to per month. */
+export function gigAverage(
+  data: BudgetData,
+  personId: PersonId | undefined,
+  conversion: Conversion,
+): GigAverage | null {
+  return ledgerAverage(data, personId, conversion, 'income');
+}
+
+/** What the day-to-day spending log works out to per month.
+ *
+ *  The mirror of `gigAverage`: money that goes out in a different amount every
+ *  day, which no fixed bill can describe. */
+export function spendAverage(
+  data: BudgetData,
+  personId: PersonId | undefined,
+  conversion: Conversion,
+): GigAverage | null {
+  return ledgerAverage(data, personId, conversion, 'expense');
 }
 
 /** Everything a person earns in a month: their fixed lines, plus the average
@@ -124,7 +164,7 @@ export function monthlyIncome(
     (total, source) => total + monthlyValue(source, conversion),
     0,
   );
-  return fixed + (gigAverage(data, personId, conversion)?.perMonth ?? 0);
+  return fixed + budgetedPerMonth(gigAverage(data, personId, conversion));
 }
 
 /* -- expenses ------------------------------------------------------------- */
@@ -140,17 +180,23 @@ export function shareFor(expense: Expense, personId: PersonId): number {
   return expense.owner === personId ? 1 : 0;
 }
 
-/** What a person's expenses cost them per month: their own lines in full, plus
- *  their agreed share of everything shared. */
+/** Everything a person carries in a month: their own lines in full, their
+ *  agreed share of everything shared, and the average of whatever their own
+ *  day-to-day spending log shows.
+ *
+ *  Day-to-day spending is theirs alone — it is not shared out, because it is a
+ *  record of what that person actually spent, not an arrangement between the
+ *  two of them. */
 export function monthlyBurden(
   data: BudgetData,
   personId: PersonId,
   conversion: Conversion,
 ): number {
-  return activeExpenses(data).reduce((total, expense) => {
+  const bills = activeExpenses(data).reduce((total, expense) => {
     const share = shareFor(expense, personId);
     return share === 0 ? total : total + monthlyValue(expense, conversion) * share;
   }, 0);
+  return bills + budgetedPerMonth(spendAverage(data, personId, conversion));
 }
 
 /** What actually leaves a person's accounts each month — which is a different
@@ -160,9 +206,11 @@ export function monthlyOutflow(
   personId: PersonId,
   conversion: Conversion,
 ): number {
-  return activeExpenses(data)
+  const bills = activeExpenses(data)
     .filter((expense) => expense.paidBy === personId)
     .reduce((total, expense) => total + monthlyValue(expense, conversion), 0);
+  // Day-to-day spending leaves the account of whoever logged it.
+  return bills + budgetedPerMonth(spendAverage(data, personId, conversion));
 }
 
 export function monthlyShared(data: BudgetData, conversion: Conversion): number {
@@ -216,7 +264,13 @@ export function summarise(
 
 export interface HouseholdSummary {
   income: number;
+  /** Bills plus day-to-day spending. */
   expenses: number;
+  /** The two halves of `expenses`, kept apart so the split can be shown. If
+   *  both cover the same thing, that double counting is visible rather than
+   *  buried in one number. */
+  bills: number;
+  spending: number;
   net: number;
   shared: number;
   people: PersonSummary[];
@@ -228,14 +282,19 @@ export function summariseHousehold(
 ): HouseholdSummary {
   const people = data.people.map((person) => summarise(data, person, conversion));
   const income = people.reduce((total, entry) => total + entry.income, 0);
-  const expenses = activeExpenses(data).reduce(
+  const bills = activeExpenses(data).reduce(
     (total, expense) => total + monthlyValue(expense, conversion),
     0,
   );
+  // Everybody's day-to-day spending, on top of the bills.
+  const spending = budgetedPerMonth(spendAverage(data, undefined, conversion));
+  const expenses = bills + spending;
 
   return {
     income,
     expenses,
+    bills,
+    spending,
     net: income - expenses,
     shared: monthlyShared(data, conversion),
     people,

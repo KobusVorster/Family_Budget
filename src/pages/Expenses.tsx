@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { newId, useBudget } from '../store/BudgetContext';
 import type { CurrencyCode, Expense, ExpenseCategory, Frequency, Owner } from '../types';
-import { categoryBreakdown, monthlyValue } from '../lib/calc';
+import { MIN_LOG_DAYS, categoryBreakdown, monthlyValue, spendAverage } from '../lib/calc';
 import { FREQUENCIES, FREQUENCY_LABEL, formatMoney, formatPercent, toMonthly } from '../lib/money';
 import { CATEGORIES, seriesColor } from '../lib/palette';
 import {
   AmountList,
   Badge,
+  Banner,
   Button,
   Card,
   CardHeader,
@@ -199,6 +200,8 @@ export default function Expenses() {
         </div>
       )}
 
+      <SpendingCard />
+
       {editing && (
         <ExpenseEditor
           expense={editing}
@@ -219,6 +222,200 @@ export default function Expenses() {
         />
       )}
     </div>
+  );
+}
+
+/* -- day-to-day spending -------------------------------------------------- */
+
+/** Money that goes out in a different amount every day — food, fuel, the shops.
+ *
+ *  The mirror of Daily earnings on the Money in page, and it works the same
+ *  way: log the days, and the average across every calendar day covered becomes
+ *  the monthly figure. A bill cannot describe this, because there is no set
+ *  amount to type in. */
+function SpendingCard() {
+  const { data, conversion, addLedgerEntry, removeLedgerEntry } = useBudget();
+  const currency = conversion.target;
+  const [showAll, setShowAll] = useState(false);
+  const [draft, setDraft] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    personId: data.people[0]?.id ?? 'will',
+    label: '',
+  });
+  const [parts, setParts] = useState<AmountPart[]>(() => [newAmountPart()]);
+
+  const entries = useMemo(
+    () =>
+      data.ledger
+        .filter((entry) => entry.type === 'expense')
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [data.ledger],
+  );
+  const visible = showAll ? entries : entries.slice(0, 12);
+
+  const person = data.people.find((p) => p.id === draft.personId);
+  const average = spendAverage(data, undefined, conversion);
+  const total = sumParts(parts);
+
+  const submit = () => {
+    if (!Number.isFinite(total) || total <= 0 || !draft.label.trim()) return;
+    addLedgerEntry({
+      id: newId('led'),
+      date: draft.date,
+      personId: draft.personId,
+      label: draft.label.trim(),
+      amount: total,
+      currency: person?.currency ?? 'USD',
+      type: 'expense',
+    });
+    setParts([newAmountPart()]);
+  };
+
+  return (
+    <Card className="mt-4">
+      <CardHeader
+        title="Day-to-day spending"
+        subtitle="What you actually spent, day by day. For the things with no set amount — food, fuel, the shops. Your bills above are separate."
+      />
+
+      {average && (
+        <>
+          {!average.enough && (
+            <Banner
+              title={`Not counted yet — ${average.days} ${average.days === 1 ? 'day' : 'days'} logged of ${MIN_LOG_DAYS}`}
+            >
+              Working out a month from a day or two would multiply it by about thirty and throw
+              your totals right off. Keep logging and it starts counting at {MIN_LOG_DAYS} days.
+            </Banner>
+          )}
+          <div className="mb-5 grid gap-4 sm:grid-cols-3">
+            <StatTile
+              label="Average per month"
+              value={formatMoney(average.perMonth, currency)}
+              detail={average.enough ? 'Counted on top of your bills' : 'Not counted yet'}
+            />
+            <StatTile label="Average per day" value={formatMoney(average.perDay, currency)} />
+            <StatTile
+              label="Total in the list"
+              value={formatMoney(average.total, currency)}
+              detail={`${average.days} ${average.days === 1 ? 'day' : 'days'}`}
+            />
+          </div>
+        </>
+      )}
+
+      <form
+        className="mb-5 grid gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
+          <Field label="Date">
+            {(id) => (
+              <TextInput
+                id={id}
+                type="date"
+                value={draft.date}
+                onChange={(event) => setDraft({ ...draft, date: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label="What was it">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={draft.label}
+                placeholder="Groceries"
+                onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+              />
+            )}
+          </Field>
+        </div>
+
+        {data.people.length > 1 && (
+          <Field label="Who spent it">
+            {(id) => (
+              <Select
+                id={id}
+                value={draft.personId}
+                onChange={(event) => setDraft({ ...draft, personId: event.target.value })}
+              >
+                {data.people.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.fullName}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
+
+        <AmountList
+          label={`Amount (${person?.currency ?? 'USD'})`}
+          parts={parts}
+          onChange={setParts}
+          currency={person?.currency ?? 'USD'}
+          hint="Several shops in one day? Press “Add another amount” for each one and they are added together."
+        />
+
+        <Button
+          variant="primary"
+          type="submit"
+          className="justify-self-start"
+          disabled={total <= 0 || !draft.label.trim()}
+        >
+          {parts.filter((part) => part.value > 0).length > 1 ? 'Add them all up' : 'Add'}
+        </Button>
+      </form>
+
+      {entries.length === 0 ? (
+        <EmptyState
+          title="Nothing here yet"
+          body="Fill in the date, what it was and the amount, then press Add. Only put things here that your bills above do not already cover, or it counts twice."
+        />
+      ) : (
+        <>
+          <ul className="flex flex-col">
+            {visible.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex items-center gap-3 border-b border-hairline py-2.5 last:border-0"
+              >
+                <span className="tnum w-24 shrink-0 text-sm text-ink-2">
+                  {new Date(`${entry.date}T00:00:00`).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{entry.label}</span>
+                <span className="tnum shrink-0 text-sm font-medium text-ink">
+                  {formatMoney(entry.amount, entry.currency, { round: false })}
+                </span>
+                <Button
+                  variant="ghost"
+                  aria-label={`Delete ${entry.label} on ${entry.date}`}
+                  onClick={() => removeLedgerEntry(entry.id)}
+                >
+                  ✕
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {entries.length > 12 && (
+            <Button className="mt-4" onClick={() => setShowAll(!showAll)}>
+              {showAll ? 'Show fewer' : `Show all ${entries.length}`}
+            </Button>
+          )}
+          <p className="mt-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
+            This is counted on top of your bills. If a bill above already covers the same
+            spending — a “Daily food” or “Fuel” line, say — turn that bill off or delete it, or
+            the same money is counted twice.
+          </p>
+        </>
+      )}
+    </Card>
   );
 }
 
