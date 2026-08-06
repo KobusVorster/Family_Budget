@@ -67,8 +67,10 @@ interface BudgetContextValue {
   refreshRate: () => Promise<boolean>;
   rateStatus: RateStatus;
 
-  toggleChecklist: (key: string) => void;
-  setChecklistBulk: (keys: string[], paid: boolean) => void;
+  /** Record how much of a bill has been paid this month, in the bill's own
+   *  currency. Pass the full amount to settle it, 0 to clear it. */
+  setPaidAmount: (key: string, amount: number) => void;
+  setChecklistBulk: (entries: Array<{ key: string; amount: number }>) => void;
 
   replaceAll: (next: BudgetData) => void;
   resetToSeed: () => void;
@@ -391,19 +393,21 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       refreshRate: applyRate,
       rateStatus,
 
-      toggleChecklist: (key) => {
-        const next = !data.checklist[key];
+      setPaidAmount: (key, amount) => {
+        const next = Math.max(0, amount);
         edit((d) => ({ ...d, checklist: { ...d.checklist, [key]: next } }));
         push((h) => remote.setChecklist(h, key, next));
       },
-      setChecklistBulk: (keys, paid) => {
+      setChecklistBulk: (entries) => {
         edit((d) => {
           const checklist = { ...d.checklist };
-          for (const key of keys) checklist[key] = paid;
+          for (const entry of entries) checklist[entry.key] = Math.max(0, entry.amount);
           return { ...d, checklist };
         });
         push(async (h) => {
-          for (const key of keys) await remote.setChecklist(h, key, paid);
+          for (const entry of entries) {
+            await remote.setChecklist(h, entry.key, Math.max(0, entry.amount));
+          }
         });
       },
 

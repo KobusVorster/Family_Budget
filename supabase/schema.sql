@@ -148,13 +148,18 @@ create table if not exists savings (
   primary key (household_id, id)
 );
 
--- One row per bill per month, only for the ones ticked off.
+-- One row per bill per month, only for the ones with something paid against
+-- them. `amount` is in the bill's own currency, so part payments survive the
+-- app being switched between dollars and rand.
 create table if not exists checklist (
   household_id uuid not null references households(id) on delete cascade,
   key text not null,
   paid boolean not null default true,
+  amount numeric not null default 0,
   primary key (household_id, key)
 );
+
+alter table checklist add column if not exists amount numeric not null default 0;
 
 /* Shared settings only. Theme and which currency to show totals in are a
    personal preference — those stay on each person's own device, so Liz can

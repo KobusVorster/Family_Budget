@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   amountIn,
+  billStatus,
   categoryBreakdown,
   debtSplit,
   gigAverage,
@@ -407,7 +408,7 @@ describe('what to pay next', () => {
 
   it('drops a bill once it is ticked off for the month', () => {
     const data = withBill(20);
-    data.checklist['bill:2026-08'] = true;
+    data.checklist['bill:2026-08'] = 1000; // paid in full
     expect(whatToPayNext(data, inDollars, today)).toHaveLength(0);
   });
 
@@ -578,7 +579,7 @@ describe('the monthly checklist', () => {
     expect(before.outstanding).toBeCloseTo(summariseHousehold(data, inRand).expenses, 2);
 
     const first = data.expenses.find((expense) => expense.active)!;
-    data.checklist[`${first.id}:${month}`] = true;
+    data.checklist[`${first.id}:${month}`] = first.amount;
 
     const after = checklistProgress(data, month, inRand);
     expect(after.paid).toBe(1);
@@ -586,6 +587,101 @@ describe('the monthly checklist', () => {
       before.outstanding - monthlyValue(first, inRand),
       2,
     );
+  });
+});
+
+describe('part payments', () => {
+  function withBill(amount = 1000, currency: 'USD' | 'ZAR' = 'USD'): BudgetData {
+    const data = seed();
+    data.debts = [];
+    data.expenses = [
+      bill({ id: 'rent', label: 'Rent', amount, currency, owner: 'will', paidBy: 'will' }),
+    ];
+    return data;
+  }
+  const MONTH = '2026-08';
+
+  it('starts unpaid with the whole amount owing', () => {
+    const data = withBill();
+    const status = billStatus(data, data.expenses[0], MONTH);
+    expect(status).toMatchObject({ due: 1000, paid: 0, remaining: 1000, state: 'unpaid' });
+  });
+
+  it('tracks a part payment and what is left', () => {
+    const data = withBill();
+    data.checklist['rent:2026-08'] = 400;
+    const status = billStatus(data, data.expenses[0], MONTH);
+    expect(status.paid).toBe(400);
+    expect(status.remaining).toBe(600);
+    expect(status.progress).toBeCloseTo(0.4, 6);
+    expect(status.state).toBe('part');
+  });
+
+  it('counts as settled once the whole amount is in', () => {
+    const data = withBill();
+    data.checklist['rent:2026-08'] = 1000;
+    expect(billStatus(data, data.expenses[0], MONTH).state).toBe('paid');
+    expect(billStatus(data, data.expenses[0], MONTH).remaining).toBe(0);
+  });
+
+  it('never shows a negative balance if you overpay', () => {
+    const data = withBill();
+    data.checklist['rent:2026-08'] = 1500;
+    const status = billStatus(data, data.expenses[0], MONTH);
+    expect(status.remaining).toBe(0);
+    expect(status.state).toBe('paid');
+  });
+
+  it('splits a weekly bill into its monthly amount first', () => {
+    const data = seed();
+    data.expenses = [
+      bill({ id: 'w', label: 'Daddy', amount: 1500, frequency: 'weekly', currency: 'ZAR' }),
+    ];
+    data.checklist['w:2026-08'] = 3000;
+    const status = billStatus(data, data.expenses[0], MONTH);
+    expect(status.due).toBeCloseTo(6500, 2);
+    expect(status.remaining).toBeCloseTo(3500, 2);
+  });
+
+  it('keeps the part payment in the bill currency, whichever way totals are shown', () => {
+    // 400 rand paid stays 400 rand. Only the reported total converts.
+    const data = withBill(1000, 'ZAR');
+    data.checklist['rent:2026-08'] = 400;
+    expect(billStatus(data, data.expenses[0], MONTH).remaining).toBe(600);
+    expect(checklistProgress(data, MONTH, inRand).outstanding).toBeCloseTo(600, 2);
+    expect(checklistProgress(data, MONTH, inDollars).outstanding).toBeCloseTo(600 / RATE, 2);
+  });
+
+  it('counts fully paid and part paid separately', () => {
+    const data = seed();
+    data.expenses = [
+      bill({ id: 'a', label: 'A', amount: 100, currency: 'USD' }),
+      bill({ id: 'b', label: 'B', amount: 100, currency: 'USD' }),
+      bill({ id: 'c', label: 'C', amount: 100, currency: 'USD' }),
+    ];
+    data.checklist['a:2026-08'] = 100;
+    data.checklist['b:2026-08'] = 40;
+    const progress = checklistProgress(data, MONTH, inDollars);
+    expect(progress).toMatchObject({ paid: 1, part: 1, total: 3 });
+    expect(progress.outstanding).toBeCloseTo(160, 2); // 0 + 60 + 100
+    expect(progress.settled).toBeCloseTo(140, 2);
+  });
+
+  it('keeps a part-paid bill on the what-to-pay list, showing only what is left', () => {
+    const data = withBill();
+    data.expenses[0].dueDay = 20;
+    data.checklist['rent:2026-08'] = 400;
+    const items = whatToPayNext(data, inDollars, new Date('2026-08-15T00:00:00'));
+    expect(items).toHaveLength(1);
+    expect(items[0].amount).toBeCloseTo(600, 2);
+    expect(items[0].partPaid).toBe(true);
+  });
+
+  it('drops it off the list once it is fully paid', () => {
+    const data = withBill();
+    data.expenses[0].dueDay = 20;
+    data.checklist['rent:2026-08'] = 1000;
+    expect(whatToPayNext(data, inDollars, new Date('2026-08-15T00:00:00'))).toHaveLength(0);
   });
 });
 

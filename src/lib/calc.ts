@@ -443,6 +443,8 @@ export interface DueItem {
   /** Where pressing it should take you. */
   page: 'checklist' | 'debt';
   kind: 'Bill' | 'Loan';
+  /** Something has been paid towards it, but not all of it. */
+  partPaid?: boolean;
 }
 
 /** Everything still to be paid, soonest first.
@@ -466,8 +468,10 @@ export function whatToPayNext(
   const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
 
   for (const expense of activeExpenses(data)) {
-    if (data.checklist[checklistKey(expense.id, month)]) continue;
     if (expense.frequency === 'once') continue;
+    // A part-paid bill stays on the list, showing only what is still owed.
+    const status = billStatus(data, expense, month);
+    if (status.state === 'paid') continue;
 
     const day = Math.min(expense.dueDay ?? lastDayOfMonth, lastDayOfMonth);
     const due = new Date(today.getFullYear(), today.getMonth(), day);
@@ -484,10 +488,11 @@ export function whatToPayNext(
           : (data.people.find((person) => person.id === expense.owner)?.name ?? ''),
       due: iso,
       daysAway: daysBetween(iso),
-      amount: monthlyValue(expense, conversion),
+      amount: amountIn(status.remaining, expense.currency, conversion),
       currency: conversion.target,
       page: 'checklist',
       kind: 'Bill',
+      partPaid: status.state === 'part',
     });
   }
 
@@ -643,10 +648,49 @@ export function checklistKey(expenseId: string, month: string): string {
   return `${expenseId}:${month}`;
 }
 
-export interface ChecklistProgress {
+/** What a bill costs this month, in its own currency. Part payments are
+ *  recorded against this, not against the converted figure. */
+export function dueThisMonth(expense: Expense): number {
+  return toMonthly(expense.amount, expense.frequency);
+}
+
+/** Anything under half a cent is rounding, not money owed. */
+const SETTLED = 0.005;
+
+export interface BillStatus {
+  due: number;
   paid: number;
+  remaining: number;
+  /** 0-1, for the little bar on the row. */
+  progress: number;
+  state: 'unpaid' | 'part' | 'paid';
+}
+
+/** Where a single bill stands this month, all in the bill's own currency. */
+export function billStatus(data: BudgetData, expense: Expense, month: string): BillStatus {
+  const due = dueThisMonth(expense);
+  const paid = Math.max(0, data.checklist[checklistKey(expense.id, month)] ?? 0);
+  const remaining = Math.max(0, due - paid);
+
+  return {
+    due,
+    paid,
+    remaining,
+    progress: due > 0 ? Math.min(1, paid / due) : 1,
+    state: remaining <= SETTLED ? 'paid' : paid > SETTLED ? 'part' : 'unpaid',
+  };
+}
+
+export interface ChecklistProgress {
+  /** Bills settled in full. */
+  paid: number;
+  /** Bills with something paid but not all of it. */
+  part: number;
   total: number;
+  /** Money still owed this month, in the reporting currency. */
   outstanding: number;
+  /** Money already handed over this month, in the reporting currency. */
+  settled: number;
 }
 
 export function checklistProgress(
@@ -656,15 +700,17 @@ export function checklistProgress(
 ): ChecklistProgress {
   const expenses = activeExpenses(data);
   let paid = 0;
+  let part = 0;
   let outstanding = 0;
+  let settled = 0;
 
   for (const expense of expenses) {
-    if (data.checklist[checklistKey(expense.id, month)]) {
-      paid += 1;
-    } else {
-      outstanding += monthlyValue(expense, conversion);
-    }
+    const status = billStatus(data, expense, month);
+    if (status.state === 'paid') paid += 1;
+    else if (status.state === 'part') part += 1;
+    outstanding += amountIn(status.remaining, expense.currency, conversion);
+    settled += amountIn(status.paid, expense.currency, conversion);
   }
 
-  return { paid, total: expenses.length, outstanding };
+  return { paid, part, total: expenses.length, outstanding, settled };
 }

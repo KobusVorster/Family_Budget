@@ -112,8 +112,13 @@ export interface LedgerEntry {
   type: 'income' | 'expense';
 }
 
-/** `${expenseId}:${YYYY-MM}` -> paid. Drives the monthly checklist. */
-export type Checklist = Record<string, boolean>;
+/** `${expenseId}:${YYYY-MM}` -> how much of that bill has been paid this month,
+ *  in the bill's own currency.
+ *
+ *  An amount rather than a yes/no, because bills often get paid in parts. Kept
+ *  in the bill's own currency so switching the app between dollars and rand
+ *  never changes what you recorded. */
+export type Checklist = Record<string, number>;
 
 /** Money set aside. Not income and not a bill — just a balance that each
  *  person keeps and updates. */

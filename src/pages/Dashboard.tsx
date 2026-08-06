@@ -437,7 +437,7 @@ function WhatToPay({ items, currency }: { items: DueItem[]; currency: CurrencyCo
                         {item.label}
                       </span>
                       <span className="block truncate text-xs text-muted">
-                        {item.kind} · {item.who} ·{' '}
+                        {item.partPaid ? 'Part paid' : item.kind} · {item.who} ·{' '}
                         {new Date(`${item.due}T00:00:00`).toLocaleDateString('en-US', {
                           day: 'numeric',
                           month: 'short',
@@ -689,9 +689,10 @@ function MonthProgress({ month }: { month: string }) {
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <span className="text-sm text-ink-2">
           {progress.paid} of {progress.total} paid
+          {progress.part > 0 && ` · ${progress.part} part paid`}
         </span>
         <span className="tnum text-sm font-medium text-ink">
-          {formatMoney(progress.outstanding, conversion.target)} left to pay
+          {formatMoney(progress.outstanding, conversion.target, { round: 'auto' })} left to pay
         </span>
       </div>
       <Meter value={fraction} tone={fraction >= 1 ? 'good' : 'warning'} label="Month progress" />

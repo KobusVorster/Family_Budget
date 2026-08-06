@@ -101,9 +101,12 @@ export async function fetchBudget(householdId: string): Promise<Partial<BudgetDa
     paymentsByDebt.set(String(row.debt_id), list);
   }
 
-  const ticked: Record<string, boolean> = {};
+  const ticked: Record<string, number> = {};
   for (const row of (checklist.data ?? []) as Row[]) {
-    if (row.paid) ticked[String(row.key)] = true;
+    const amount = num(row.amount);
+    // Rows written before part payments existed only carried a yes/no.
+    if (amount > 0) ticked[String(row.key)] = amount;
+    else if (row.paid && amount === 0) ticked[String(row.key)] = 0;
   }
 
   const settingsRow = settings.data as Row | null;
@@ -322,13 +325,16 @@ export async function saveSettings(householdId: string, settings: Settings): Pro
 export async function setChecklist(
   householdId: string,
   key: string,
-  paid: boolean,
+  amount: number,
 ): Promise<void> {
   const db = supabase();
-  // Only ticks are stored; unticking removes the row, so the table stays small.
-  const { error } = paid
-    ? await db.from('checklist').upsert({ household_id: householdId, key, paid: true })
-    : await db.from('checklist').delete().eq('household_id', householdId).eq('key', key);
+  // Nothing paid means no row, so the table only ever holds real payments.
+  const { error } =
+    amount > 0
+      ? await db
+          .from('checklist')
+          .upsert({ household_id: householdId, key, amount, paid: true })
+      : await db.from('checklist').delete().eq('household_id', householdId).eq('key', key);
   if (error) throw error;
 }
 
@@ -372,8 +378,8 @@ export async function replaceBudget(householdId: string, data: BudgetData): Prom
   await push(
     'checklist',
     Object.entries(data.checklist)
-      .filter(([, paid]) => paid)
-      .map(([key]) => ({ key, paid: true })),
+      .filter(([, amount]) => amount > 0)
+      .map(([key, amount]) => ({ key, amount, paid: true })),
   );
 
   await saveSettings(householdId, data.settings);

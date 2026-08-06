@@ -1,5 +1,6 @@
 import type { BudgetData } from '../types';
 import { DATA_VERSION, createSeedData } from '../data/seed';
+import { toMonthly } from './money';
 
 const KEY = 'family-budget:data';
 const PREFS_KEY = 'family-budget:prefs';
@@ -59,6 +60,21 @@ export function saveData(data: BudgetData): void {
  *  lacked, so an upgrade never drops a user's numbers. */
 export function migrate(input: Partial<BudgetData>): BudgetData {
   const fallback = createSeedData();
+  const expenses = input.expenses ?? [];
+
+  /* The checklist used to be a yes/no per bill. It now holds how much has been
+     paid, so an old `true` becomes the whole amount and an old `false` becomes
+     nothing. Without this every previously ticked bill would come back unpaid. */
+  const checklist: BudgetData['checklist'] = {};
+  for (const [key, value] of Object.entries(input.checklist ?? {})) {
+    if (typeof value === 'number') {
+      if (value > 0) checklist[key] = value;
+      continue;
+    }
+    if (value !== true) continue;
+    const expense = expenses.find((item) => item.id === key.split(':')[0]);
+    if (expense) checklist[key] = toMonthly(expense.amount, expense.frequency);
+  }
 
   return {
     version: DATA_VERSION,
@@ -68,7 +84,7 @@ export function migrate(input: Partial<BudgetData>): BudgetData {
     debts: input.debts ?? [],
     ledger: input.ledger ?? [],
     savings: input.savings ?? [],
-    checklist: input.checklist ?? {},
+    checklist,
     settings: {
       ...fallback.settings,
       ...input.settings,
