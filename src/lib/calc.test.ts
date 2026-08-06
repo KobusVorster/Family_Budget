@@ -25,6 +25,7 @@ import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
 import { applyPlan, buildSchedule } from '../pages/Debts';
 import { sumParts } from '../components/ui';
 import { cleanInviteCode } from './remote';
+import { messageOf } from '../store/AuthContext';
 import { afterFailedSave, exportName, exportText, importText } from './storage';
 import { SEED_USD_ZAR, createSeedData } from '../data/seed';
 import type { BudgetData, Debt, Expense, LedgerEntry } from '../types';
@@ -848,6 +849,33 @@ describe('day-to-day spending', () => {
     expect(summary.expenses).toBeCloseTo(summary.bills + summary.spending, 6);
     // Kept apart precisely so that double counting against a bill is visible.
     expect(summary.bills).toBeCloseTo(summariseHousehold(seed(), inDollars).expenses, 6);
+  });
+});
+
+describe('saying what went wrong', () => {
+  it('reads the message off a Supabase error, which is a plain object', () => {
+    /* `String(error)` on one of these gives "[object Object]", which is what
+       someone was shown on the screen that said their budget would not load. */
+    expect(messageOf({ message: 'permission denied for table households' })).toBe(
+      'permission denied for table households',
+    );
+    expect(messageOf({ message: '', details: 'Key is not present in table.' })).toBe(
+      'Key is not present in table.',
+    );
+    expect(messageOf({ code: '42501' })).toBe('The database said 42501.');
+  });
+
+  it('still handles real Errors and bare strings', () => {
+    expect(messageOf(new Error('Failed to fetch'))).toBe('Failed to fetch');
+    expect(messageOf('nope')).toBe('nope');
+  });
+
+  it('never comes back empty or as [object Object]', () => {
+    for (const odd of [null, undefined, {}, 0, [], '   ']) {
+      const message = messageOf(odd);
+      expect(message).not.toBe('[object Object]');
+      expect(message.trim().length).toBeGreaterThan(0);
+    }
   });
 });
 

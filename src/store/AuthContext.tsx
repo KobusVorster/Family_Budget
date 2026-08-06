@@ -19,6 +19,11 @@ interface AuthValue {
   session: Session | null;
   /** The household the signed-in person belongs to. */
   householdId: string | null;
+  /** Set when signed in but the household could not be reached. While this is
+   *  set there is no real budget to show, and the app must say so rather than
+   *  fall back to starter figures. */
+  householdError: string | null;
+  retryHousehold: () => Promise<void>;
   email: string | null;
   userId: string | null;
   signIn: (email: string, password: string) => Promise<string | null>;
@@ -33,6 +38,23 @@ interface AuthValue {
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
+
+/** Get a readable message out of whatever was thrown.
+ *
+ *  Supabase rejects with plain objects rather than `Error`s, so `String(error)`
+ *  produces "[object Object]" — which is what someone would otherwise be shown
+ *  when their budget would not load. */
+export function messageOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const { message, details, hint, code } = error as Record<string, unknown>;
+    const first = [message, details, hint].find((part) => typeof part === 'string' && part.trim());
+    if (typeof first === 'string') return first;
+    if (typeof code === 'string') return `The database said ${code}.`;
+  }
+  if (typeof error === 'string' && error.trim()) return error;
+  return 'Something went wrong reaching the database.';
+}
 
 /** Turn Supabase's wording into something worth reading. */
 function friendly(message: string): string {
@@ -61,11 +83,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(cloud ? 'loading' : 'local');
   const [session, setSession] = useState<Session | null>(null);
   const [householdId, setHouseholdId] = useState<string | null>(null);
+  /* Why the household could not be found. Kept rather than swallowed: signed in
+     without one, the app cannot show the real budget, and the failure has to
+     reach the screen instead of being quietly treated as "working offline". */
+  const [householdError, setHouseholdError] = useState<string | null>(null);
 
   /* The code is typed on the sign-up form but only usable once Supabase hands
      back a session, which arrives separately through onAuthStateChange. A ref
      carries it across that gap without re-running the listener. */
   const pendingCode = useRef<string | undefined>(undefined);
+  /** Lets "Try again" re-run the lookup without re-signing in. */
+  const applyRef = useRef<((next: Session | null) => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (!cloud) return;
@@ -75,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(next);
       if (!next) {
         setHouseholdId(null);
+        setHouseholdError(null);
         setState('signed-out');
         return;
       }
@@ -82,14 +111,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const code = pendingCode.current;
         pendingCode.current = undefined;
         setHouseholdId(await ensureHousehold(code));
+        setHouseholdError(null);
         setState('signed-in');
-      } catch {
-        // Signed in but the household lookup failed — usually the schema has
-        // not been run yet. Better to say so than to show an empty budget.
+      } catch (error) {
         setHouseholdId(null);
+        setHouseholdError(friendly(messageOf(error)));
         setState('signed-in');
       }
     };
+    applyRef.current = apply;
 
     void db.auth.getSession().then(({ data }) => apply(data.session));
     const { data: sub } = db.auth.onAuthStateChange((_event, next) => void apply(next));
@@ -122,10 +152,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const joinWithCode = useCallback(async (inviteCode: string) => {
     try {
       setHouseholdId(await joinHousehold(inviteCode));
+      setHouseholdError(null);
       return null;
     } catch (error) {
-      return friendly(error instanceof Error ? error.message : String(error));
+      return friendly(messageOf(error));
     }
+  }, []);
+
+  /** Have another go at finding the household, for when the first try failed
+   *  because the connection dropped rather than because anything is wrong. */
+  const retryHousehold = useCallback(async () => {
+    const { data } = await supabase().auth.getSession();
+    await applyRef.current?.(data.session);
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
@@ -144,6 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       state,
       session,
       householdId,
+      householdError,
+      retryHousehold,
       email: session?.user.email ?? null,
       userId: session?.user.id ?? null,
       signIn,
@@ -152,7 +192,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       resetPassword,
       signOut,
     }),
-    [state, session, householdId, signIn, signUp, joinWithCode, resetPassword, signOut],
+    [
+      state,
+      session,
+      householdId,
+      householdError,
+      retryHousehold,
+      signIn,
+      signUp,
+      joinWithCode,
+      resetPassword,
+      signOut,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

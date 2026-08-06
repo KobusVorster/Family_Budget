@@ -22,6 +22,7 @@ import type { Conversion } from '../lib/calc';
 import { createEmptyData, createSeedData } from '../data/seed';
 import { THEME_KEY, loadData, loadLocalPrefs, saveData, saveLocalPrefs } from '../lib/storage';
 import { fetchUsdZarRate } from '../lib/rate';
+import { isCloudConfigured } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import * as remote from '../lib/remote';
 import { migrate } from '../lib/storage';
@@ -87,7 +88,13 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
   const { state: authState, householdId } = useAuth();
   const cloud = authState === 'signed-in' && Boolean(householdId);
 
-  const [data, setData] = useState<BudgetData>(() => loadData());
+  /* Starter figures are only ever right for a browser with no account. Once
+     there is a login, the numbers must come from the database or not at all —
+     showing a seeded Car loan of $18,500 to someone whose real one is $17,000
+     is worse than showing nothing, because it looks like their budget. */
+  const [data, setData] = useState<BudgetData>(() =>
+    isCloudConfigured() ? createEmptyData() : loadData(),
+  );
   const [rateStatus, setRateStatus] = useState<RateStatus>('idle');
   const [sync, setSync] = useState<SyncStatus>(cloud ? 'loading' : 'local');
   const [syncError, setSyncError] = useState<string | null>(null);

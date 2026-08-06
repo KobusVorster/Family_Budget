@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ComponentType, type SVGProps } from 
 import { useBudget } from './store/BudgetContext';
 import { useAuth } from './store/AuthContext';
 import { reviewQueue } from './lib/calc';
-import { SegmentedControl } from './components/ui';
+import { Banner, Button, SegmentedControl } from './components/ui';
 import {
   IconChecklist,
   IconDebt,
@@ -68,7 +68,63 @@ export default function App() {
     );
   }
   if (auth.state === 'signed-out') return <Login />;
+  /* Signed in, but the household could not be reached. There is no budget to
+     show, so show nothing rather than a page of starter figures — those look
+     exactly like a real budget, and typing into them saves to this device
+     alone while the shared one sits untouched. */
+  if (!auth.householdId) return <NoHousehold />;
   return <Budget />;
+}
+
+function NoHousehold() {
+  const auth = useAuth();
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div className="flex min-h-full items-center justify-center bg-plane px-4 py-12 text-ink">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">Family Budget</h1>
+          <p className="mt-1 text-sm text-ink-2">{auth.email}</p>
+        </div>
+
+        <div className="card rise p-6">
+          <h2 className="text-base font-semibold">Could not load your budget</h2>
+          <p className="mt-1 mb-4 text-sm text-ink-2">
+            You are signed in, but this device could not reach your budget. Nothing is lost —
+            it is still saved online. Usually this is the connection.
+          </p>
+          {auth.householdError && (
+            <Banner tone="critical" title="What went wrong">
+              {auth.householdError}
+            </Banner>
+          )}
+          <Button
+            variant="primary"
+            className="mt-2 w-full"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void auth.retryHousehold().finally(() => setBusy(false));
+            }}
+          >
+            {busy ? 'Trying…' : 'Try again'}
+          </Button>
+          <button
+            type="button"
+            onClick={() => void auth.signOut()}
+            className="mt-4 w-full text-sm text-ink-2 underline underline-offset-2 hover:text-ink"
+          >
+            Sign out
+          </button>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-muted">
+          Do not type anything in until this is sorted — it would not reach the shared budget.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function Budget() {
