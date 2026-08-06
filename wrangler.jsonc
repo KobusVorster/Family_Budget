@@ -1,0 +1,18 @@
+{
+  // Tells `wrangler deploy` what to put online. Without this file the deploy
+  // step fails — wrangler has no way to know what it is deploying.
+  //
+  // Must match the project name in the Cloudflare dashboard.
+  "name": "family-budget",
+  "compatibility_date": "2025-09-01",
+
+  // There is no server. The whole app is the static build in `dist`, so this is
+  // an assets-only Worker: Cloudflare just serves the files.
+  "assets": {
+    "directory": "./dist",
+
+    // Every page lives at a `#hash` on one HTML file, so a deep link can never
+    // 404 on its own. This still covers someone typing a stray path.
+    "not_found_handling": "single-page-application"
+  }
+}

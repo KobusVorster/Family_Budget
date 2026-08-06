@@ -46,24 +46,31 @@ to skip it:
 
 Leave it on if you'd rather, just expect to check your inbox when signing up.
 
-## 5. Put the site online — Cloudflare Pages
+## 5. Put the site online — Cloudflare
 
-1. Go to **pages.cloudflare.com**, sign up, **Create → Pages → Connect to Git**.
-2. Pick this repository.
-3. Build settings:
-   - Framework preset: **Vite**
+1. Go to **dash.cloudflare.com**, sign up, then **Workers & Pages → Create**.
+2. Choose **Import a repository** and pick this one.
+3. Settings:
+   - Project name: `family-budget` — it must match the `name` in
+     `wrangler.jsonc`, or the deploy fails.
    - Build command: `npm run build`
-   - Build output directory: `dist`
-4. **Environment variables** — add both, for Production *and* Preview:
+   - Deploy command: `npx wrangler deploy`
+4. Open **Advanced settings → Variables** and add both:
    - `VITE_SUPABASE_URL` = your Project URL
    - `VITE_SUPABASE_ANON_KEY` = your anon public key
-5. **Save and Deploy**.
 
-You'll get an address like `family-budget-abc.pages.dev`. Every push to the
-branch rebuilds it automatically.
+   Without these the site still goes up, but it runs on your own browser's
+   storage only — no login, and Liz sees nothing you type.
+5. **Deploy**.
+
+You'll get an address like `family-budget.<your-name>.workers.dev`. Every push
+to the branch rebuilds it automatically.
+
+`wrangler.jsonc` in this repo is what tells the deploy step to serve the `dist`
+folder. Don't delete it.
 
 > The keys are read when the site is **built**, not when it runs. If you add or
-> change them later, hit **Retry deployment** or they won't take effect.
+> change them later, redeploy or they won't take effect.
 
 ## 6. Create the two logins and move your data across
 
