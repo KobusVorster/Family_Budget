@@ -27,14 +27,18 @@ household can read or write anything.
 
 ## 3. Get your two keys
 
-In Supabase go to **Settings → API** and copy:
+**The key** — Supabase → **Settings → API Keys** → the **Publishable key**
+(`sb_publishable_…`). Older projects show an **anon public** key instead; either
+works.
 
-- **Project URL** — looks like `https://abcdefgh.supabase.co`
-- **anon public** key — a long string
+**The Project URL** is no longer on that page. Take it from the dashboard
+address bar: `…/dashboard/project/<REF>/…` becomes
+`https://<REF>.supabase.co`. It is also under **Settings → Data API**.
 
-Both are safe to publish. What protects your data is the rules from step 2,
-which the database enforces on every request. The **service_role** key on that
-same page is the dangerous one — never put it anywhere near the app.
+Both are safe to publish — Supabase says so on the keys page itself. What
+protects your data is the rules from step 2, which the database checks on every
+single request. The **secret** / **service_role** key on that same page is the
+dangerous one — never put it anywhere near the app.
 
 ## 4. Turn off the email confirmation (optional but easier)
 
@@ -55,13 +59,28 @@ Leave it on if you'd rather, just expect to check your inbox when signing up.
      `wrangler.jsonc`, or the deploy fails.
    - Build command: `npm run build`
    - Deploy command: `npx wrangler deploy`
-4. Open **Advanced settings → Variables** and add both:
-   - `VITE_SUPABASE_URL` = your Project URL
-   - `VITE_SUPABASE_ANON_KEY` = your anon public key
+4. **Deploy**. The first build has no keys yet, so the site goes up without a
+   login — that is expected.
+5. Now add the keys, and mind *which* variables screen you use. The project has
+   two, and only one of them is the right one:
 
-   Without these the site still goes up, but it runs on your own browser's
-   storage only — no login, and Liz sees nothing you type.
-5. **Deploy**.
+   **Settings → Build → Variables and secrets → +**
+
+   - `VITE_SUPABASE_URL` = your Project URL
+   - `VITE_SUPABASE_ANON_KEY` = your publishable key
+
+   The **Variables and secrets** section at the *top* of Settings is a different
+   thing — runtime variables for Workers that run server code. This app is
+   static files only, so that section refuses with *"Variables cannot be added
+   to a Worker that only has static assets"*. That message is not a problem;
+   it is simply the wrong screen. Vite reads these while the site is being
+   **built**, which is what the Build section is for.
+
+6. Trigger a rebuild so the keys get baked in: push any commit, or use the
+   **Deployments** tab.
+
+   Do **not** use the **New deployment** button for this. On a Worker that
+   means "upload static files by hand", which bypasses the Git build entirely.
 
 You'll get an address like `family-budget.<your-name>.workers.dev`. Every push
 to the branch rebuilds it automatically.
@@ -69,8 +88,9 @@ to the branch rebuilds it automatically.
 `wrangler.jsonc` in this repo is what tells the deploy step to serve the `dist`
 folder. Don't delete it.
 
-> The keys are read when the site is **built**, not when it runs. If you add or
-> change them later, redeploy or they won't take effect.
+> **How to tell it worked:** open the site. Asking you to sign in means the keys
+> took. Dropping you straight into the budget means they did not — the build ran
+> before they were saved, so rebuild.
 
 ## 6. Create the two logins and move your data across
 
