@@ -22,7 +22,7 @@ import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
 import { applyPlan, buildSchedule } from '../pages/Debts';
 import { sumParts } from '../components/ui';
 import { cleanInviteCode } from './remote';
-import { exportName, exportText, importText } from './storage';
+import { afterFailedSave, exportName, exportText, importText } from './storage';
 import { SEED_USD_ZAR, createSeedData } from '../data/seed';
 import type { BudgetData, Debt, Expense, LedgerEntry } from '../types';
 
@@ -708,6 +708,28 @@ describe('saving and reopening the budget as text', () => {
 
   it('names the file with the date', () => {
     expect(exportName()).toMatch(/^family-budget-\d{4}-\d{2}-\d{2}\.json$/);
+  });
+});
+
+describe('when the host will not save the file', () => {
+  it('falls back to the ordinary download', () => {
+    /* The host installs a downloads object for every capability it knows about,
+       granted or not, so its presence proves nothing. These are the rejections
+       that used to reach no fallback at all. */
+    for (const code of ['not_granted', 'unavailable', 'capability_disabled', 'capability_removed']) {
+      expect(afterFailedSave({ code })).toBe('try-link');
+    }
+  });
+
+  it('falls back when the rejection says nothing useful', () => {
+    for (const odd of [undefined, null, {}, new Error('boom'), 'nope']) {
+      expect(afterFailedSave(odd)).toBe('try-link');
+    }
+  });
+
+  it('stops when the reader said no', () => {
+    // Downloading anyway would override a choice they had just made.
+    expect(afterFailedSave({ code: 'declined' })).toBe('declined');
   });
 });
 

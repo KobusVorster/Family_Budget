@@ -104,8 +104,10 @@ export function exportName(): string {
   return `family-budget-${new Date().toISOString().slice(0, 10)}.json`;
 }
 
-/** Did the file actually reach them, or do we need to offer the text instead? */
-export type SaveOutcome = 'saved' | 'declined' | 'unavailable' | 'unknown';
+/** Did the file actually reach them, or do we need to offer the text instead?
+ *
+ *  `unknown` covers the plain-link path, where success cannot be observed. */
+export type SaveOutcome = 'saved' | 'declined' | 'unknown';
 
 /* Set by the host when a page is allowed to hand the reader a file. Declared
    loosely because it is only present in some views. */
@@ -117,10 +119,26 @@ declare global {
   }
 }
 
+/** What a failed host save means for us.
+ *
+ *  Presence is not permission: the host installs a `downloads` object for every
+ *  capability it knows about, granted or not, and the ungranted ones simply
+ *  reject. So the decision hangs on the rejection, never on whether the object
+ *  exists — checking existence alone is what left the fallback unreachable.
+ *
+ *  `declined` is the one code that stops here. The reader was asked and said no;
+ *  slipping a download past them afterwards would override a choice they had
+ *  just made. Everything else — not granted, unavailable, a lifecycle error —
+ *  just means this route is not usable, so try the ordinary one. */
+export function afterFailedSave(error: unknown): 'declined' | 'try-link' {
+  return (error as { code?: string } | null)?.code === 'declined' ? 'declined' : 'try-link';
+}
+
 /** Offer the budget as a file.
  *
- *  Prefers the host's own save, which is the only one that works inside a
- *  sandboxed frame. Falls back to a plain link for an ordinary web page.
+ *  Tries the host's own save first — inside a sandboxed frame it is the only
+ *  file route that works — then falls back to a plain link. See
+ *  {@link afterFailedSave} for which failures fall through and which stop.
  *
  *  The fallback returns `'unknown'`, never `'saved'`: a blocked blob download
  *  fails silently, with no event and no exception, so claiming success there
@@ -137,8 +155,7 @@ export async function exportFile(data: BudgetData): Promise<SaveOutcome> {
       await host.save({ filename, data: text });
       return 'saved';
     } catch (error) {
-      const code = (error as { code?: string } | null)?.code;
-      return code === 'declined' ? 'declined' : 'unavailable';
+      if (afterFailedSave(error) === 'declined') return 'declined';
     }
   }
 
