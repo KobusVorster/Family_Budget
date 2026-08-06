@@ -3,7 +3,13 @@ import { useBudget } from '../store/BudgetContext';
 import { useAuth } from '../store/AuthContext';
 import { reviewQueue } from '../lib/calc';
 import { SEED_USD_ZAR } from '../data/seed';
-import { exportFile, importFile } from '../lib/storage';
+import {
+  exportFile,
+  exportText,
+  importFile,
+  importText,
+  type SaveOutcome,
+} from '../lib/storage';
 import { formatMoney } from '../lib/money';
 import {
   Badge,
@@ -33,12 +39,36 @@ export default function Settings() {
   const [joined, setJoined] = useState(false);
   const [rateDraft, setRateDraft] = useState(data.settings.usdZarRate);
   const [importError, setImportError] = useState<string | null>(null);
+  const [text, setText] = useState<string | null>(null);
+  const [savedAs, setSavedAs] = useState<SaveOutcome | null>(null);
+  const [pasting, setPasting] = useState(false);
+  const [paste, setPaste] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
+  const textArea = useRef<HTMLTextAreaElement>(null);
 
   const reviews = useMemo(() => reviewQueue(data), [data]);
   const rateAge = Math.floor(
     (Date.now() - new Date(`${data.settings.rateUpdatedAt}T00:00:00`).getTime()) / 86_400_000,
   );
+
+  /** Show the budget as text and put the cursor in it, ready to copy. */
+  const showText = () => {
+    setText(exportText(data));
+    // After the box exists. Selecting for them saves the fiddliest step.
+    window.setTimeout(() => {
+      textArea.current?.focus({ preventScroll: true });
+      textArea.current?.select();
+    }, 0);
+  };
+
+  const saveCopy = async () => {
+    const outcome = await exportFile(data);
+    setSavedAs(outcome);
+    /* Anything short of a confirmed save and the text goes up on its own. A
+       blocked download says nothing at all, so waiting to be asked would leave
+       someone believing they had a backup they never got. */
+    if (outcome !== 'saved') showText();
+  };
 
   const join = async () => {
     setJoinError(null);
@@ -391,10 +421,12 @@ export default function Settings() {
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => exportFile(data)}>
+          <Button variant="primary" onClick={() => void saveCopy()}>
             Save a copy
           </Button>
+          <Button onClick={() => showText()}>Show as text</Button>
           <Button onClick={() => fileInput.current?.click()}>Open a saved copy</Button>
+          <Button onClick={() => setPasting((open) => !open)}>Paste a saved copy</Button>
           <input
             ref={fileInput}
             type="file"
@@ -422,6 +454,69 @@ export default function Settings() {
             Delete everything
           </Button>
         </div>
+
+        {/* The route that always works. Downloads and the clipboard are both
+            blocked when this page runs inside a frame, but text you select
+            yourself never is. */}
+        {text !== null && (
+          <div className="mt-4 rounded-lg bg-sunken p-3">
+            <h3 className="text-sm font-semibold">Your whole budget, as text</h3>
+            <ol className="mt-1 mb-3 list-inside list-decimal text-sm text-ink-2">
+              <li>Press Ctrl+A then Ctrl+C (on a Mac, Cmd+A then Cmd+C).</li>
+              <li>Open Notepad, press Ctrl+V.</li>
+              <li>Save it as <strong className="text-ink">budget-backup.json</strong>.</li>
+            </ol>
+            <textarea
+              ref={textArea}
+              readOnly
+              value={text}
+              spellCheck={false}
+              aria-label="Your budget as text"
+              className="h-40 w-full rounded-lg border border-hairline bg-surface p-3 font-mono text-xs text-ink"
+            />
+            <p className="mt-2 text-xs text-muted">
+              {savedAs === 'unknown'
+                ? 'Nothing downloaded? Some browsers block it silently. Use this instead — it always works.'
+                : 'This is the same thing Save a copy writes.'}
+            </p>
+          </div>
+        )}
+
+        {pasting && (
+          <div className="mt-4 rounded-lg bg-sunken p-3">
+            <h3 className="text-sm font-semibold">Paste a saved copy</h3>
+            <p className="mt-1 mb-3 text-sm text-ink-2">
+              Paste the text you copied out of the other copy. This replaces everything here.
+            </p>
+            <textarea
+              value={paste}
+              spellCheck={false}
+              aria-label="Paste your saved budget"
+              placeholder="Paste here, starting with {"
+              onChange={(event) => setPaste(event.target.value)}
+              className="h-32 w-full rounded-lg border border-hairline bg-surface p-3 font-mono text-xs text-ink placeholder:text-muted"
+            />
+            <Button
+              variant="primary"
+              className="mt-3"
+              disabled={!paste.trim()}
+              onClick={() => {
+                setImportError(null);
+                try {
+                  replaceAll(importText(paste));
+                  setPaste('');
+                  setPasting(false);
+                } catch (error) {
+                  setImportError(
+                    error instanceof Error ? error.message : 'That could not be read.',
+                  );
+                }
+              }}
+            >
+              Load it
+            </Button>
+          </div>
+        )}
 
         <p className="mt-4 text-xs text-muted">
           {auth.state === 'signed-in'

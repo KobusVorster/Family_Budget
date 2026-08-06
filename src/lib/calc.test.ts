@@ -22,6 +22,7 @@ import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
 import { applyPlan, buildSchedule } from '../pages/Debts';
 import { sumParts } from '../components/ui';
 import { cleanInviteCode } from './remote';
+import { exportName, exportText, importText } from './storage';
 import { SEED_USD_ZAR, createSeedData } from '../data/seed';
 import type { BudgetData, Debt, Expense, LedgerEntry } from '../types';
 
@@ -672,6 +673,41 @@ describe('day, month and year views of the ledger', () => {
   it('converts to the currency being shown', () => {
     const points = ledgerSeries(entries, inRand, 'year');
     expect(points[0].total).toBeCloseTo(10 * RATE, 2);
+  });
+});
+
+describe('saving and reopening the budget as text', () => {
+  const budget = () => {
+    const data = seed();
+    data.checklist = { 'x:2026-08': 30 };
+    return data;
+  };
+
+  it('comes back the same', () => {
+    const before = budget();
+    const after = importText(exportText(before));
+    expect(after.expenses).toEqual(before.expenses);
+    expect(after.debts).toEqual(before.debts);
+    expect(after.checklist).toEqual(before.checklist);
+  });
+
+  it('forgives the whitespace copying out of a box drags along', () => {
+    // Ctrl+A over a textarea usually picks up a trailing newline.
+    const after = importText(`\n${exportText(budget())}\n  `);
+    expect(after.expenses.length).toBe(budget().expenses.length);
+  });
+
+  it('says what is wrong in plain words when the text is not a budget', () => {
+    expect(() => importText('hello')).toThrow(/first \{ to the last \}/);
+    expect(() => importText('')).toThrow(/first \{ to the last \}/);
+  });
+
+  it('turns down valid JSON that is not a budget', () => {
+    expect(() => importText('{"hello":"world"}')).toThrow(/no money in or bills/);
+  });
+
+  it('names the file with the date', () => {
+    expect(exportName()).toMatch(/^family-budget-\d{4}-\d{2}-\d{2}\.json$/);
   });
 });
 

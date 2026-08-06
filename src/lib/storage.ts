@@ -92,23 +92,85 @@ export function migrate(input: Partial<BudgetData>): BudgetData {
   };
 }
 
-export function exportFile(data: BudgetData): void {
-  const stamp = new Date().toISOString().slice(0, 10);
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `family-budget-${stamp}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
+/** The whole budget as text — the one form of it that can always get out.
+ *
+ *  Downloads and the clipboard are both blocked when the app runs inside a
+ *  sandboxed frame, but text in a box the reader can select never is. */
+export function exportText(data: BudgetData): string {
+  return JSON.stringify(data, null, 2);
 }
 
-export async function importFile(file: File): Promise<BudgetData> {
-  const text = await file.text();
-  const parsed = JSON.parse(text) as Partial<BudgetData>;
-  if (!parsed || typeof parsed !== 'object') throw new Error('That is not a file this app saved. Pick a .json file you saved with “Save a copy”.');
+export function exportName(): string {
+  return `family-budget-${new Date().toISOString().slice(0, 10)}.json`;
+}
+
+/** Did the file actually reach them, or do we need to offer the text instead? */
+export type SaveOutcome = 'saved' | 'declined' | 'unavailable' | 'unknown';
+
+/* Set by the host when a page is allowed to hand the reader a file. Declared
+   loosely because it is only present in some views. */
+declare global {
+  interface Window {
+    claude?: {
+      downloads?: { save: (r: { filename: string; data: string }) => Promise<unknown> };
+    };
+  }
+}
+
+/** Offer the budget as a file.
+ *
+ *  Prefers the host's own save, which is the only one that works inside a
+ *  sandboxed frame. Falls back to a plain link for an ordinary web page.
+ *
+ *  The fallback returns `'unknown'`, never `'saved'`: a blocked blob download
+ *  fails silently, with no event and no exception, so claiming success there
+ *  would be a lie — and this is the button standing between someone and losing
+ *  their records. The caller shows the text route whenever it is not `'saved'`.
+ */
+export async function exportFile(data: BudgetData): Promise<SaveOutcome> {
+  const filename = exportName();
+  const text = exportText(data);
+
+  const host = window.claude?.downloads;
+  if (host) {
+    try {
+      await host.save({ filename, data: text });
+      return 'saved';
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      return code === 'declined' ? 'declined' : 'unavailable';
+    }
+  }
+
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+  return 'unknown';
+}
+
+/** Read a budget back out of text, whether it came from a file or a paste. */
+export function importText(text: string): BudgetData {
+  let parsed: Partial<BudgetData> | null;
+  try {
+    // Copying out of a text box usually drags a newline along with it.
+    parsed = JSON.parse(text.trim()) as Partial<BudgetData>;
+  } catch {
+    throw new Error(
+      'That is not a saved budget. Copy the whole thing, from the first { to the last }.',
+    );
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('That is not a file this app saved. Pick a .json file you saved with “Save a copy”.');
+  }
   if (!Array.isArray(parsed.expenses) && !Array.isArray(parsed.income)) {
     throw new Error('That file has no money in or bills in it. Pick a different one.');
   }
   return migrate(parsed);
+}
+
+export async function importFile(file: File): Promise<BudgetData> {
+  return importText(await file.text());
 }
