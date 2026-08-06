@@ -21,6 +21,7 @@ import {
 import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
 import { applyPlan, buildSchedule } from '../pages/Debts';
 import { sumParts } from '../components/ui';
+import { cleanInviteCode } from './remote';
 import { SEED_USD_ZAR, createSeedData } from '../data/seed';
 import type { BudgetData, Debt, Expense, LedgerEntry } from '../types';
 
@@ -671,6 +672,29 @@ describe('day, month and year views of the ledger', () => {
   it('converts to the currency being shown', () => {
     const points = ledgerSeries(entries, inRand, 'year');
     expect(points[0].total).toBeCloseTo(10 * RATE, 2);
+  });
+});
+
+describe('the invite code', () => {
+  const real = '3f2b1c8a-9d4e-4a7b-8c1f-2e5d6a7b8c9d';
+
+  it('accepts a code copied straight out of Settings', () => {
+    expect(cleanInviteCode(real)).toBe(real);
+  });
+
+  it('forgives the whitespace a copy and paste drags along', () => {
+    expect(cleanInviteCode(`  ${real}\n`)).toBe(real);
+  });
+
+  it('forgives capitals, which some phones add', () => {
+    expect(cleanInviteCode(real.toUpperCase())).toBe(real);
+  });
+
+  it('turns down anything that could not be a code', () => {
+    // Caught here so a typo reads as English instead of a Postgres error.
+    for (const bad of ['', '   ', 'not-a-code', real.slice(0, -1), `${real}x`, 'liz@example.com']) {
+      expect(cleanInviteCode(bad)).toBeNull();
+    }
   });
 });
 

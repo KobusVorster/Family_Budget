@@ -18,6 +18,7 @@ import {
   SegmentedControl,
   StatTile,
   Switch,
+  TextInput,
 } from '../components/ui';
 
 export default function Settings() {
@@ -26,6 +27,10 @@ export default function Settings() {
   const [confirming, setConfirming] = useState<'reset' | 'clear' | null>(null);
   const auth = useAuth();
   const [copied, setCopied] = useState(false);
+  const [codeToJoin, setCodeToJoin] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joined, setJoined] = useState(false);
   const [rateDraft, setRateDraft] = useState(data.settings.usdZarRate);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -34,6 +39,20 @@ export default function Settings() {
   const rateAge = Math.floor(
     (Date.now() - new Date(`${data.settings.rateUpdatedAt}T00:00:00`).getTime()) / 86_400_000,
   );
+
+  const join = async () => {
+    setJoinError(null);
+    setJoined(false);
+    setJoining(true);
+    const problem = await auth.joinWithCode(codeToJoin);
+    setJoining(false);
+    if (problem) {
+      setJoinError(problem);
+      return;
+    }
+    setCodeToJoin('');
+    setJoined(true);
+  };
 
   const applyRate = () => {
     const rate = rateDraft;
@@ -268,32 +287,75 @@ export default function Settings() {
         />
         {auth.state === 'signed-in' ? (
           <>
-            <dl className="grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-muted">Signed in as</dt>
-                <dd className="mt-0.5 font-medium break-all">{auth.email}</dd>
-              </div>
-              <div>
-                <dt className="text-muted">Your user ID</dt>
-                <dd className="mt-0.5 flex items-center gap-2">
-                  <code className="truncate text-xs">{auth.userId}</code>
+            <p className="text-sm">
+              <span className="text-muted">Signed in as</span>{' '}
+              <span className="font-medium break-all">{auth.email}</span>
+            </p>
+
+            {auth.householdId && (
+              <div className="mt-5 border-t border-hairline pt-5">
+                <h3 className="text-sm font-semibold">Let the other person in</h3>
+                <p className="mt-1 text-sm text-ink-2">
+                  Send this code to Liz. She types it in when she creates her login, and then you
+                  both see the same numbers.
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-lg bg-sunken px-3 py-2 text-xs">
+                    {auth.householdId}
+                  </code>
                   <Button
                     onClick={() => {
-                      void navigator.clipboard?.writeText(auth.userId ?? '');
+                      void navigator.clipboard?.writeText(auth.householdId ?? '');
                       setCopied(true);
                       window.setTimeout(() => setCopied(false), 2000);
                     }}
                   >
                     {copied ? 'Copied' : 'Copy'}
                   </Button>
-                </dd>
+                </div>
+                <p className="mt-2 text-xs text-muted">
+                  Anyone with this code can see and change the budget, so only send it to Liz.
+                </p>
               </div>
-            </dl>
-            <p className="mt-4 rounded-lg bg-sunken p-3 text-sm text-ink-2">
-              To let Liz in: she creates her own login first, then sends you her user ID from this
-              page. See DEPLOY.md for the one line to run.
-            </p>
-            <Button className="mt-4" onClick={() => void auth.signOut()}>
+            )}
+
+            <div className="mt-5 border-t border-hairline pt-5">
+              <h3 className="text-sm font-semibold">Made your login before you had the code?</h3>
+              <p className="mt-1 text-sm text-ink-2">
+                Then you are looking at a budget of your own. Paste the code here to switch to the
+                shared one.
+              </p>
+              {joinError && (
+                <Banner tone="critical" title="That did not work">
+                  {joinError}
+                </Banner>
+              )}
+              {joined && (
+                <Banner tone="good" title="Done">
+                  You are in. The shared budget is loading.
+                </Banner>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <TextInput
+                  aria-label="Invite code"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={codeToJoin}
+                  placeholder="Paste the code"
+                  className="min-w-0 flex-1"
+                  onChange={(event) => setCodeToJoin(event.target.value)}
+                />
+                <Button
+                  variant="primary"
+                  disabled={!codeToJoin.trim() || joining}
+                  onClick={() => void join()}
+                >
+                  {joining ? 'Working…' : 'Join'}
+                </Button>
+              </div>
+            </div>
+
+            <Button className="mt-5" onClick={() => void auth.signOut()}>
               Sign out
             </Button>
           </>

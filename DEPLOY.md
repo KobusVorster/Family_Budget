@@ -75,28 +75,20 @@ folder. Don't delete it.
 ## 6. Create the two logins and move your data across
 
 1. Open your new address. You'll see the sign-in screen.
-2. Press **Create a login**, use your email, pick a password. You're in — with
-   an empty budget.
+2. Press **Create a login**, use your email, pick a password. Leave **Invite
+   code** empty — you're the first one. You're in, with an empty budget.
 3. Go to **Settings → Open a saved copy** and pick the file you saved at the
    start. Your budget uploads.
-4. Send Liz the address. She presses **Create a login** with her own email.
-5. She goes to **Settings → Your login** and sends you her **user ID**.
-6. You add her to your household. In Supabase → **SQL Editor**, run this with
-   her ID pasted in:
+4. Still in Settings, under **Your login**, copy the code under *Let the other
+   person in*. Send it to Liz along with the address.
+5. Liz presses **Create a login** with her own email and pastes that code into
+   **Invite code**. She's straight into your budget — same numbers, no extra
+   steps.
 
-   ```sql
-   insert into household_members (household_id, user_id, role)
-   select household_id, 'PASTE-HER-USER-ID-HERE', 'member'
-   from household_members
-   where user_id = auth.uid()
-   limit 1;
-   ```
-
-   If that gives you trouble, find your `household_id` in the
-   **Table Editor → household_members**, and insert her row by hand there.
-
-7. She signs out and back in. She now sees your budget, and you both edit the
-   same one.
+Anyone with that code can see and change the budget, so don't post it
+anywhere. If Liz creates her login before you send it, she'll be sitting in an
+empty budget of her own — she pastes the code into **Settings → Made your login
+before you had the code?** and presses **Join**.
 
 ## 7. On your phones
 
@@ -108,14 +100,14 @@ opens full screen like a normal app. Nothing to install.
 ## What it costs
 
 Nothing, at your size. Supabase free gives 500 MB of database — you'll use a
-fraction of one. Cloudflare Pages free is unlimited for this.
+fraction of one. Cloudflare's free tier is far more than this needs.
 
 **One catch:** a free Supabase project goes to sleep after 7 days with nobody
 using it, and takes about 30 seconds to wake up. You'll be in weekly so it
 probably never happens. If it becomes annoying it's $25/month to stop it.
 
 A web address of your own (like `ourbudget.com`) is about $12/year from any
-registrar; add it in Cloudflare Pages under **Custom domains**.
+registrar; add it in Cloudflare under **Custom domains**.
 
 ## If something goes wrong
 
@@ -125,8 +117,9 @@ connection dropped, or the Supabase project is asleep. Press **Try again**.
 **Signed in, but the budget is empty** — the tables were probably not created.
 Re-run step 2.
 
-**Liz signs in and sees her own empty budget** — she hasn't been added to your
-household yet. Do step 6.
+**Liz signs in and sees her own empty budget** — she created her login without
+the invite code. She pastes it into **Settings → Made your login before you had
+the code?** and presses **Join**.
 
 **Nothing saves, no error** — check the two environment variables in Cloudflare
 are spelled exactly right and that you redeployed after adding them.

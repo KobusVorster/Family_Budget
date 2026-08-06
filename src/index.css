@@ -27,8 +27,12 @@
   --color-ink-2: #52514e;
   /* Muted is a themed token, not one shared hex. No single grey clears 4.5:1
      against both the light and the dark surface, and this carries real label
-     text (not just axis ticks), so each mode gets its own step. */
-  --color-muted: #75736e;
+     text (not just axis ticks), so each mode gets its own step.
+
+     Each step is chosen against the *worst* of the three grounds it can land
+     on — sunken, not surface. Picked against the card alone it passed there and
+     quietly failed on the page background and inside sunken panels. */
+  --color-muted: #6f6d68;
   --color-grid: #e1e0d9;
   --color-axis: #c3c2b7;
   --color-hairline: rgb(11 11 11 / 0.1);
@@ -87,7 +91,7 @@
       --color-sunken: #232322;
       --color-ink: #ffffff;
       --color-ink-2: #c3c2b7;
-      --color-muted: #898781;
+      --color-muted: #8f8d87;
       --color-grid: #2c2c2a;
       --color-axis: #383835;
       --color-hairline: rgb(255 255 255 / 0.1);
@@ -122,7 +126,7 @@
     --color-sunken: #232322;
     --color-ink: #ffffff;
     --color-ink-2: #c3c2b7;
-    --color-muted: #898781;
+    --color-muted: #8f8d87;
     --color-grid: #2c2c2a;
     --color-axis: #383835;
     --color-hairline: rgb(255 255 255 / 0.1);

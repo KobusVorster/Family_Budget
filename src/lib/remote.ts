@@ -18,9 +18,29 @@ import { supabase } from './supabase';
  * it means whoever saves last silently wipes the other's change. For money
  * that is not acceptable, so each change touches only its own row. */
 
-/** Which household the signed-in person belongs to, creating one the first
- *  time they log in. */
-export async function ensureHousehold(): Promise<string> {
+/** The invite code is the household's id. It is a random UUID, so it cannot be
+ *  guessed — which is what makes it safe to pass around as the way in. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Tidy up a pasted code, or return null if it could never be one.
+ *
+ *  Checked here rather than at the database so a typo comes back as plain
+ *  English instead of a Postgres error about invalid input syntax for uuid. */
+export function cleanInviteCode(raw: string): string | null {
+  const trimmed = raw.trim().toLowerCase();
+  return UUID.test(trimmed) ? trimmed : null;
+}
+
+/** The message shown when a code is well-formed but matches no household.
+ *  Postgres reports this as a foreign-key violation, code 23503. */
+const NO_SUCH_HOUSEHOLD = 'That code does not match a budget. Check it and try again.';
+
+/** Which household the signed-in person belongs to.
+ *
+ *  With no code, the first sign-in creates a household of their own. With one,
+ *  they join the household it names instead — that is how the second person
+ *  ends up looking at the same numbers rather than an empty budget. */
+export async function ensureHousehold(inviteCode?: string): Promise<string> {
   const db = supabase();
   const { data: user } = await db.auth.getUser();
   if (!user.user) throw new Error('Not signed in.');
@@ -32,7 +52,11 @@ export async function ensureHousehold(): Promise<string> {
     .limit(1)
     .maybeSingle();
   if (existing.error) throw existing.error;
+  // Already in one. Being handed a code afterwards does not move you; that is
+  // what `joinHousehold` is for.
   if (existing.data) return existing.data.household_id as string;
+
+  if (inviteCode) return joinHousehold(inviteCode);
 
   const created = await db.from('households').insert({ name: 'Our budget' }).select('id').single();
   if (created.error) throw created.error;
@@ -45,15 +69,30 @@ export async function ensureHousehold(): Promise<string> {
   return created.data.id as string;
 }
 
-/** Let a second person into an existing household. Run by whoever is already
- *  in it, using the other person's user id. */
-export async function addMember(householdId: string, userId: string): Promise<void> {
+/** Put the signed-in person into the household a code names.
+ *
+ *  Safe to call when they are already in another one — the row is keyed on
+ *  (household_id, user_id), so this adds a membership rather than moving them,
+ *  and the household they land in is the one returned. */
+export async function joinHousehold(inviteCode: string): Promise<string> {
+  const code = cleanInviteCode(inviteCode);
+  if (!code) throw new Error('That does not look like a code. Copy the whole thing and try again.');
+
   const db = supabase();
+  const { data: user } = await db.auth.getUser();
+  if (!user.user) throw new Error('Not signed in.');
+
   const { error } = await db
     .from('household_members')
-    .upsert({ household_id: householdId, user_id: userId, role: 'member' });
-  if (error) throw error;
+    .upsert({ household_id: code, user_id: user.user.id, role: 'member' });
+
+  if (error) {
+    if (error.code === '23503') throw new Error(NO_SUCH_HOUSEHOLD);
+    throw error;
+  }
+  return code;
 }
+
 
 /* -- reading --------------------------------------------------------------- */
 

@@ -15,6 +15,7 @@ export default function Login() {
   const [mode, setMode] = useState<Mode>('in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export default function Login() {
       mode === 'in'
         ? await signIn(email, password)
         : mode === 'up'
-          ? await signUp(email, password)
+          ? await signUp(email, password, inviteCode)
           : await resetPassword(email);
     setBusy(false);
 
@@ -107,6 +108,24 @@ export default function Login() {
                     autoComplete={mode === 'up' ? 'new-password' : 'current-password'}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
+                  />
+                )}
+              </Field>
+            )}
+
+            {mode === 'up' && (
+              <Field
+                label="Invite code"
+                hint="Leave this empty if you are the first one. If the other person already set this up, paste the code from their Settings page."
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={inviteCode}
+                    placeholder="Optional"
+                    onChange={(event) => setInviteCode(event.target.value)}
                   />
                 )}
               </Field>
