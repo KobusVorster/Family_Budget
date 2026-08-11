@@ -36,9 +36,18 @@ export function cleanInviteCode(raw: string): string | null {
  *  Postgres reports this as a foreign-key violation, code 23503. */
 const NO_SUCH_HOUSEHOLD = 'That code does not match a budget. Check it and try again.';
 
-/** Shown when the device holds a login but the database is not accepting it. */
+/** Shown when the token on this device has actually run out. */
 export const STALE_SESSION =
   'Your sign-in on this device has expired. Sign out and sign in again.';
+
+/** Shown when the token is present and in date, and the database still will not
+ *  accept it.
+ *
+ *  A different fault entirely, and worth its own words: signing in again fixes
+ *  an expiry and does nothing at all for this. */
+export const REFUSED_SESSION =
+  'The database would not accept this device’s sign-in, even though it has not expired. ' +
+  'Signing in again will not help — send the details below on.';
 
 /** Postgres codes worth telling apart. */
 const RLS_VIOLATION = '42501';
@@ -49,12 +58,20 @@ export function isRlsFailure(error: unknown): boolean {
   return code === RLS_VIOLATION || /row-level security/i.test(message ?? '');
 }
 
-/** Replace a database error with the plain-English one, keeping its code.
+/** Replace a database refusal with the plain-English one, keeping its code.
+ *
+ *  Which message depends on the token, not on the refusal. An expired token and
+ *  a token the database rejects look identical from here, and calling both
+ *  "expired" sends someone round the sign-in loop for a fault that signing in
+ *  cannot touch.
  *
  *  The wording is for the reader; the code is for whoever has to work out why,
  *  and dropping it turns two different faults into the same screen. */
-function staleSession(cause: unknown): Error {
-  const error = new Error(STALE_SESSION);
+function refused(cause: unknown, session: Session | null): Error {
+  const expiry = session?.expires_at ? session.expires_at * 1000 : null;
+  const actuallyExpired = expiry !== null && expiry <= Date.now();
+
+  const error = new Error(actuallyExpired ? STALE_SESSION : REFUSED_SESSION);
   const code = (cause as { code?: string } | null)?.code;
   if (code) Object.assign(error, { code });
   return error;
@@ -107,6 +124,7 @@ export async function ensureHousehold(
 ): Promise<string> {
   const db = supabase();
   const userId = await signedInUserId(db, session);
+  const live = session ?? (await db.auth.getSession()).data.session;
 
   const existing = await db
     .from('household_members')
@@ -125,18 +143,18 @@ export async function ensureHousehold(
      database is refusing, and the two are indistinguishable from here — both
      return no rows. Creating a household on the wrong guess is the expensive
      mistake: it leaves someone with a second, empty budget and their real one
-     apparently gone. So a refused insert is reported as the stale session it
-     almost certainly is, rather than passed on as Postgres policy wording. */
+     apparently gone. So a refusal is reported as a refusal, in words that match
+     what the token actually shows, rather than as Postgres policy wording. */
   const created = await db.from('households').insert({ name: 'Our budget' }).select('id').single();
   if (created.error) {
-    throw isRlsFailure(created.error) ? staleSession(created.error) : created.error;
+    throw isRlsFailure(created.error) ? refused(created.error, live) : created.error;
   }
 
   const joined = await db
     .from('household_members')
     .insert({ household_id: created.data.id, user_id: userId, role: 'owner' });
   if (joined.error) {
-    throw isRlsFailure(joined.error) ? staleSession(joined.error) : joined.error;
+    throw isRlsFailure(joined.error) ? refused(joined.error, live) : joined.error;
   }
 
   return created.data.id as string;
@@ -160,7 +178,7 @@ export async function joinHousehold(inviteCode: string): Promise<string> {
 
   if (error) {
     if (error.code === FOREIGN_KEY_VIOLATION) throw new Error(NO_SUCH_HOUSEHOLD);
-    if (isRlsFailure(error)) throw staleSession(error);
+    if (isRlsFailure(error)) throw refused(error, (await db.auth.getSession()).data.session);
     throw error;
   }
   return code;

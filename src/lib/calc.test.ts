@@ -24,7 +24,7 @@ import {
 import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
 import { applyPlan, buildSchedule } from '../pages/Debts';
 import { sumParts } from '../components/ui';
-import { STALE_SESSION, cleanInviteCode, isRlsFailure } from './remote';
+import { REFUSED_SESSION, STALE_SESSION, cleanInviteCode, isRlsFailure } from './remote';
 import { describe as describeFailure, messageOf } from '../store/AuthContext';
 import { afterFailedSave, exportName, exportText, importText } from './storage';
 import { SEED_USD_ZAR, createSeedData } from '../data/seed';
@@ -873,9 +873,17 @@ describe('telling a refused sign-in apart from a real problem', () => {
     expect(isRlsFailure(undefined)).toBe(false);
   });
 
-  it('says what actually fixes it', () => {
-    // Trying again cannot help — the token has to be replaced.
+  it('says what actually fixes an expired token', () => {
     expect(STALE_SESSION).toMatch(/sign in again/i);
+  });
+
+  it('does not tell someone with a good token to sign in again', () => {
+    /* A token that is present and in date, refused anyway, is a different
+       fault. Sending someone round the sign-in loop for it wastes their time
+       and hides the real problem. */
+    expect(REFUSED_SESSION).toMatch(/not expired|has not expired/i);
+    expect(REFUSED_SESSION).toMatch(/will not help/i);
+    expect(REFUSED_SESSION).not.toBe(STALE_SESSION);
   });
 });
 
