@@ -23,6 +23,9 @@ interface AuthValue {
    *  set there is no real budget to show, and the app must say so rather than
    *  fall back to starter figures. */
   householdError: string | null;
+  /** The technical detail behind `householdError`, for when the plain-English
+   *  version is not enough to tell two causes apart. Shown folded away. */
+  householdDetail: string | null;
   retryHousehold: () => Promise<void>;
   email: string | null;
   userId: string | null;
@@ -56,6 +59,30 @@ export function messageOf(error: unknown): string {
   return 'Something went wrong reaching the database.';
 }
 
+/** The facts worth having when the plain-English message is not enough.
+ *
+ *  A device can hold what looks like a good login and still reach the database
+ *  as nobody. Whether a token was present, and whether it had already expired,
+ *  is the difference between "sign in again" and something else entirely — and
+ *  neither is visible from the outside. */
+export function describe(session: Session | null, error: unknown): string {
+  const code = (error as { code?: string } | null)?.code;
+  const expires = session?.expires_at ? session.expires_at * 1000 : null;
+
+  return [
+    `token: ${session?.access_token ? 'present' : 'MISSING'}`,
+    expires
+      ? `expires: ${new Date(expires).toISOString().slice(0, 16).replace('T', ' ')}${
+          expires <= Date.now() ? ' (PAST)' : ''
+        }`
+      : 'expires: unknown',
+    `user: ${session?.user?.id ? session.user.id.slice(0, 8) : 'none'}`,
+    code ? `code: ${code}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /** Turn Supabase's wording into something worth reading. */
 function friendly(message: string): string {
   const text = message.toLowerCase();
@@ -87,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      without one, the app cannot show the real budget, and the failure has to
      reach the screen instead of being quietly treated as "working offline". */
   const [householdError, setHouseholdError] = useState<string | null>(null);
+  const [householdDetail, setHouseholdDetail] = useState<string | null>(null);
 
   /* The code is typed on the sign-up form but only usable once Supabase hands
      back a session, which arrives separately through onAuthStateChange. A ref
@@ -104,25 +132,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!next) {
         setHouseholdId(null);
         setHouseholdError(null);
+        setHouseholdDetail(null);
         setState('signed-out');
         return;
       }
       try {
         const code = pendingCode.current;
         pendingCode.current = undefined;
-        setHouseholdId(await ensureHousehold(code));
+        setHouseholdId(await ensureHousehold(code, next));
         setHouseholdError(null);
+        setHouseholdDetail(null);
         setState('signed-in');
       } catch (error) {
         setHouseholdId(null);
         setHouseholdError(friendly(messageOf(error)));
+        setHouseholdDetail(describe(next, error));
         setState('signed-in');
       }
     };
     applyRef.current = apply;
 
     void db.auth.getSession().then(({ data }) => apply(data.session));
-    const { data: sub } = db.auth.onAuthStateChange((_event, next) => void apply(next));
+
+    /* This callback runs while Supabase holds its auth lock, and Supabase's own
+       guidance is not to call back into it from here. A query started inside
+       the lock can go out without the access token — anonymous, however good
+       the session is — and row-level security then refuses it, which matches a
+       report of a phone signing in fine and still being told it had no budget.
+
+       Not proven to be that report's cause: the same flow behaves correctly in
+       a desktop harness either way. Stepping out of the callback costs one turn
+       of the event loop and removes the hazard regardless. */
+    const { data: sub } = db.auth.onAuthStateChange((_event, next) => {
+      setTimeout(() => void apply(next), 0);
+    });
     return () => sub.subscription.unsubscribe();
   }, [cloud]);
 
@@ -183,6 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       householdId,
       householdError,
+      householdDetail,
       retryHousehold,
       email: session?.user.email ?? null,
       userId: session?.user.id ?? null,
@@ -197,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       householdId,
       householdError,
+      householdDetail,
       retryHousehold,
       signIn,
       signUp,

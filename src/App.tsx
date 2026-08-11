@@ -103,6 +103,19 @@ function NoHousehold() {
             </Banner>
           )}
 
+          {/* Folded away, because it is for whoever is fixing this rather than
+              whoever is trying to use the app. */}
+          {auth.householdDetail && (
+            <details className="mb-4">
+              <summary className="cursor-pointer text-sm text-ink-2 underline underline-offset-2">
+                Details
+              </summary>
+              <p className="mt-2 rounded-lg bg-sunken p-3 font-mono text-xs break-all text-ink-2">
+                {auth.householdDetail}
+              </p>
+            </details>
+          )}
+
           {/* A refused sign-in is not fixed by trying again, so lead with the
               thing that does fix it. */}
           {stale ? (

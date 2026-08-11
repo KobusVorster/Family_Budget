@@ -25,7 +25,7 @@ import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
 import { applyPlan, buildSchedule } from '../pages/Debts';
 import { sumParts } from '../components/ui';
 import { STALE_SESSION, cleanInviteCode, isRlsFailure } from './remote';
-import { messageOf } from '../store/AuthContext';
+import { describe as describeFailure, messageOf } from '../store/AuthContext';
 import { afterFailedSave, exportName, exportText, importText } from './storage';
 import { SEED_USD_ZAR, createSeedData } from '../data/seed';
 import type { BudgetData, Debt, Expense, LedgerEntry } from '../types';
@@ -876,6 +876,39 @@ describe('telling a refused sign-in apart from a real problem', () => {
   it('says what actually fixes it', () => {
     // Trying again cannot help — the token has to be replaced.
     expect(STALE_SESSION).toMatch(/sign in again/i);
+  });
+});
+
+describe('the technical detail behind a failure', () => {
+  const session = (over = {}) =>
+    ({
+      access_token: 'token',
+      expires_at: Math.floor(Date.parse('2030-01-01T00:00:00Z') / 1000),
+      user: { id: 'abcdef12-3456-7890-abcd-ef1234567890' },
+      ...over,
+    }) as never;
+
+  it('says whether a token was there at all', () => {
+    expect(describeFailure(session(), null)).toContain('token: present');
+    expect(describeFailure(session({ access_token: '' }), null)).toContain('token: MISSING');
+    expect(describeFailure(null, null)).toContain('token: MISSING');
+  });
+
+  it('marks an expiry that has already passed', () => {
+    // The difference between "sign in again" and a different problem entirely.
+    const past = Math.floor(Date.parse('2020-01-01T00:00:00Z') / 1000);
+    expect(describeFailure(session({ expires_at: past }), null)).toContain('(PAST)');
+    expect(describeFailure(session(), null)).not.toContain('(PAST)');
+  });
+
+  it('carries the database code through', () => {
+    expect(describeFailure(session(), { code: '42501' })).toContain('code: 42501');
+  });
+
+  it('shortens the user id rather than printing the whole thing', () => {
+    const detail = describeFailure(session(), null);
+    expect(detail).toContain('user: abcdef12');
+    expect(detail).not.toContain('ef1234567890');
   });
 });
 

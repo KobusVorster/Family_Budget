@@ -9,6 +9,7 @@ import type {
   Saving,
   Settings,
 } from '../types';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 /* Reading and writing the shared budget.
@@ -48,18 +49,39 @@ export function isRlsFailure(error: unknown): boolean {
   return code === RLS_VIOLATION || /row-level security/i.test(message ?? '');
 }
 
+/** Replace a database error with the plain-English one, keeping its code.
+ *
+ *  The wording is for the reader; the code is for whoever has to work out why,
+ *  and dropping it turns two different faults into the same screen. */
+function staleSession(cause: unknown): Error {
+  const error = new Error(STALE_SESSION);
+  const code = (cause as { code?: string } | null)?.code;
+  if (code) Object.assign(error, { code });
+  return error;
+}
+
 /** The signed-in user, but only once the database will actually accept them.
  *
  *  A device can hold a session whose access token has expired and failed to
  *  refresh. `getUser()` still answers from what is stored, so the app looks
  *  signed in, while every query reaches Postgres as the anonymous role. Under
  *  the anonymous role `auth.uid()` is null, so a membership lookup returns no
- *  rows — which reads exactly like "this person has no household yet". */
-async function signedInUserId(db: ReturnType<typeof supabase>): Promise<string> {
-  const { data, error } = await db.auth.getSession();
-  if (error) throw error;
+ *  rows — which reads exactly like "this person has no household yet".
+ *
+ *  Pass the session in wherever one is already to hand. Asking for it again
+ *  costs an auth call, and from inside an auth callback that call is worse than
+ *  wasteful — see `ensureHousehold`. */
+async function signedInUserId(
+  db: ReturnType<typeof supabase>,
+  known?: Session | null,
+): Promise<string> {
+  let session = known ?? null;
+  if (!session) {
+    const { data, error } = await db.auth.getSession();
+    if (error) throw error;
+    session = data.session;
+  }
 
-  const session = data.session;
   if (!session?.access_token || !session.user) throw new Error('Not signed in.');
   // `expires_at` is in seconds.
   if (session.expires_at && session.expires_at * 1000 <= Date.now()) {
@@ -72,10 +94,19 @@ async function signedInUserId(db: ReturnType<typeof supabase>): Promise<string> 
  *
  *  With no code, the first sign-in creates a household of their own. With one,
  *  they join the household it names instead — that is how the second person
- *  ends up looking at the same numbers rather than an empty budget. */
-export async function ensureHousehold(inviteCode?: string): Promise<string> {
+ *  ends up looking at the same numbers rather than an empty budget.
+ *
+ *  Never call this from inside `onAuthStateChange`. That callback runs while
+ *  the auth lock is held, and a query started there goes out with no access
+ *  token — anonymous, whatever the session says. The membership lookup then
+ *  matches nothing and the insert is refused by row-level security, on a device
+ *  that has just signed in perfectly well. */
+export async function ensureHousehold(
+  inviteCode?: string,
+  session?: Session | null,
+): Promise<string> {
   const db = supabase();
-  const userId = await signedInUserId(db);
+  const userId = await signedInUserId(db, session);
 
   const existing = await db
     .from('household_members')
@@ -98,14 +129,14 @@ export async function ensureHousehold(inviteCode?: string): Promise<string> {
      almost certainly is, rather than passed on as Postgres policy wording. */
   const created = await db.from('households').insert({ name: 'Our budget' }).select('id').single();
   if (created.error) {
-    throw isRlsFailure(created.error) ? new Error(STALE_SESSION) : created.error;
+    throw isRlsFailure(created.error) ? staleSession(created.error) : created.error;
   }
 
   const joined = await db
     .from('household_members')
     .insert({ household_id: created.data.id, user_id: userId, role: 'owner' });
   if (joined.error) {
-    throw isRlsFailure(joined.error) ? new Error(STALE_SESSION) : joined.error;
+    throw isRlsFailure(joined.error) ? staleSession(joined.error) : joined.error;
   }
 
   return created.data.id as string;
@@ -129,7 +160,7 @@ export async function joinHousehold(inviteCode: string): Promise<string> {
 
   if (error) {
     if (error.code === FOREIGN_KEY_VIOLATION) throw new Error(NO_SUCH_HOUSEHOLD);
-    if (isRlsFailure(error)) throw new Error(STALE_SESSION);
+    if (isRlsFailure(error)) throw staleSession(error);
     throw error;
   }
   return code;
