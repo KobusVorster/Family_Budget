@@ -35,6 +35,39 @@ export function cleanInviteCode(raw: string): string | null {
  *  Postgres reports this as a foreign-key violation, code 23503. */
 const NO_SUCH_HOUSEHOLD = 'That code does not match a budget. Check it and try again.';
 
+/** Shown when the device holds a login but the database is not accepting it. */
+export const STALE_SESSION =
+  'Your sign-in on this device has expired. Sign out and sign in again.';
+
+/** Postgres codes worth telling apart. */
+const RLS_VIOLATION = '42501';
+const FOREIGN_KEY_VIOLATION = '23503';
+
+export function isRlsFailure(error: unknown): boolean {
+  const { code, message } = (error ?? {}) as { code?: string; message?: string };
+  return code === RLS_VIOLATION || /row-level security/i.test(message ?? '');
+}
+
+/** The signed-in user, but only once the database will actually accept them.
+ *
+ *  A device can hold a session whose access token has expired and failed to
+ *  refresh. `getUser()` still answers from what is stored, so the app looks
+ *  signed in, while every query reaches Postgres as the anonymous role. Under
+ *  the anonymous role `auth.uid()` is null, so a membership lookup returns no
+ *  rows — which reads exactly like "this person has no household yet". */
+async function signedInUserId(db: ReturnType<typeof supabase>): Promise<string> {
+  const { data, error } = await db.auth.getSession();
+  if (error) throw error;
+
+  const session = data.session;
+  if (!session?.access_token || !session.user) throw new Error('Not signed in.');
+  // `expires_at` is in seconds.
+  if (session.expires_at && session.expires_at * 1000 <= Date.now()) {
+    throw new Error(STALE_SESSION);
+  }
+  return session.user.id;
+}
+
 /** Which household the signed-in person belongs to.
  *
  *  With no code, the first sign-in creates a household of their own. With one,
@@ -42,13 +75,12 @@ const NO_SUCH_HOUSEHOLD = 'That code does not match a budget. Check it and try a
  *  ends up looking at the same numbers rather than an empty budget. */
 export async function ensureHousehold(inviteCode?: string): Promise<string> {
   const db = supabase();
-  const { data: user } = await db.auth.getUser();
-  if (!user.user) throw new Error('Not signed in.');
+  const userId = await signedInUserId(db);
 
   const existing = await db
     .from('household_members')
     .select('household_id')
-    .eq('user_id', user.user.id)
+    .eq('user_id', userId)
     .limit(1)
     .maybeSingle();
   if (existing.error) throw existing.error;
@@ -58,13 +90,23 @@ export async function ensureHousehold(inviteCode?: string): Promise<string> {
 
   if (inviteCode) return joinHousehold(inviteCode);
 
+  /* Nothing found. That is either a genuinely new person or a session the
+     database is refusing, and the two are indistinguishable from here — both
+     return no rows. Creating a household on the wrong guess is the expensive
+     mistake: it leaves someone with a second, empty budget and their real one
+     apparently gone. So a refused insert is reported as the stale session it
+     almost certainly is, rather than passed on as Postgres policy wording. */
   const created = await db.from('households').insert({ name: 'Our budget' }).select('id').single();
-  if (created.error) throw created.error;
+  if (created.error) {
+    throw isRlsFailure(created.error) ? new Error(STALE_SESSION) : created.error;
+  }
 
   const joined = await db
     .from('household_members')
-    .insert({ household_id: created.data.id, user_id: user.user.id, role: 'owner' });
-  if (joined.error) throw joined.error;
+    .insert({ household_id: created.data.id, user_id: userId, role: 'owner' });
+  if (joined.error) {
+    throw isRlsFailure(joined.error) ? new Error(STALE_SESSION) : joined.error;
+  }
 
   return created.data.id as string;
 }
@@ -79,15 +121,15 @@ export async function joinHousehold(inviteCode: string): Promise<string> {
   if (!code) throw new Error('That does not look like a code. Copy the whole thing and try again.');
 
   const db = supabase();
-  const { data: user } = await db.auth.getUser();
-  if (!user.user) throw new Error('Not signed in.');
+  const userId = await signedInUserId(db);
 
   const { error } = await db
     .from('household_members')
-    .upsert({ household_id: code, user_id: user.user.id, role: 'member' });
+    .upsert({ household_id: code, user_id: userId, role: 'member' });
 
   if (error) {
-    if (error.code === '23503') throw new Error(NO_SUCH_HOUSEHOLD);
+    if (error.code === FOREIGN_KEY_VIOLATION) throw new Error(NO_SUCH_HOUSEHOLD);
+    if (isRlsFailure(error)) throw new Error(STALE_SESSION);
     throw error;
   }
   return code;

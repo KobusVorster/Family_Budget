@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ComponentType, type SVGProps } from 
 import { useBudget } from './store/BudgetContext';
 import { useAuth } from './store/AuthContext';
 import { reviewQueue } from './lib/calc';
+import { STALE_SESSION } from './lib/remote';
 import { Banner, Button, SegmentedControl } from './components/ui';
 import {
   IconChecklist,
@@ -79,6 +80,7 @@ export default function App() {
 function NoHousehold() {
   const auth = useAuth();
   const [busy, setBusy] = useState(false);
+  const stale = auth.householdError === STALE_SESSION;
 
   return (
     <div className="flex min-h-full items-center justify-center bg-plane px-4 py-12 text-ink">
@@ -91,32 +93,57 @@ function NoHousehold() {
         <div className="card rise p-6">
           <h2 className="text-base font-semibold">Could not load your budget</h2>
           <p className="mt-1 mb-4 text-sm text-ink-2">
-            You are signed in, but this device could not reach your budget. Nothing is lost —
-            it is still saved online. Usually this is the connection.
+            You are signed in, but this device could not reach your budget. Nothing is lost — it
+            is still saved online.
           </p>
+
           {auth.householdError && (
             <Banner tone="critical" title="What went wrong">
               {auth.householdError}
             </Banner>
           )}
-          <Button
-            variant="primary"
-            className="mt-2 w-full"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              void auth.retryHousehold().finally(() => setBusy(false));
-            }}
-          >
-            {busy ? 'Trying…' : 'Try again'}
-          </Button>
-          <button
-            type="button"
-            onClick={() => void auth.signOut()}
-            className="mt-4 w-full text-sm text-ink-2 underline underline-offset-2 hover:text-ink"
-          >
-            Sign out
-          </button>
+
+          {/* A refused sign-in is not fixed by trying again, so lead with the
+              thing that does fix it. */}
+          {stale ? (
+            <>
+              <Button variant="primary" className="mt-2 w-full" onClick={() => void auth.signOut()}>
+                Sign out and sign in again
+              </Button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  void auth.retryHousehold().finally(() => setBusy(false));
+                }}
+                className="mt-4 w-full text-sm text-ink-2 underline underline-offset-2 hover:text-ink"
+              >
+                {busy ? 'Trying…' : 'Try again anyway'}
+              </button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="primary"
+                className="mt-2 w-full"
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  void auth.retryHousehold().finally(() => setBusy(false));
+                }}
+              >
+                {busy ? 'Trying…' : 'Try again'}
+              </Button>
+              <button
+                type="button"
+                onClick={() => void auth.signOut()}
+                className="mt-4 w-full text-sm text-ink-2 underline underline-offset-2 hover:text-ink"
+              >
+                Sign out
+              </button>
+            </>
+          )}
         </div>
 
         <p className="mt-6 text-center text-xs text-muted">

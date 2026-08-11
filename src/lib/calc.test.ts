@@ -24,7 +24,7 @@ import {
 import { WEEKS_PER_MONTH, convert, formatMoney, toMonthly } from './money';
 import { applyPlan, buildSchedule } from '../pages/Debts';
 import { sumParts } from '../components/ui';
-import { cleanInviteCode } from './remote';
+import { STALE_SESSION, cleanInviteCode, isRlsFailure } from './remote';
 import { messageOf } from '../store/AuthContext';
 import { afterFailedSave, exportName, exportText, importText } from './storage';
 import { SEED_USD_ZAR, createSeedData } from '../data/seed';
@@ -849,6 +849,33 @@ describe('day-to-day spending', () => {
     expect(summary.expenses).toBeCloseTo(summary.bills + summary.spending, 6);
     // Kept apart precisely so that double counting against a bill is visible.
     expect(summary.bills).toBeCloseTo(summariseHousehold(seed(), inDollars).expenses, 6);
+  });
+});
+
+describe('telling a refused sign-in apart from a real problem', () => {
+  it('spots a row-level security refusal by code or by wording', () => {
+    /* A device holding an expired token reaches Postgres as the anonymous
+       role. `auth.uid()` is then null, the membership lookup finds nothing,
+       and it looks exactly like a new person — so the app tries to create a
+       household and the policy refuses it. That refusal is the tell. */
+    expect(isRlsFailure({ code: '42501' })).toBe(true);
+    expect(
+      isRlsFailure({
+        message: 'new row violates row-level security policy for table "households"',
+      }),
+    ).toBe(true);
+  });
+
+  it('does not mistake other failures for it', () => {
+    expect(isRlsFailure({ code: '23503' })).toBe(false);
+    expect(isRlsFailure({ message: 'could not connect' })).toBe(false);
+    expect(isRlsFailure(null)).toBe(false);
+    expect(isRlsFailure(undefined)).toBe(false);
+  });
+
+  it('says what actually fixes it', () => {
+    // Trying again cannot help — the token has to be replaced.
+    expect(STALE_SESSION).toMatch(/sign in again/i);
   });
 });
 
